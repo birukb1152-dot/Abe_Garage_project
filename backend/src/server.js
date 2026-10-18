@@ -1,7 +1,8 @@
 import express from "express";
 import cors from "cors";
-import connectDB from "./config/db.js";
 import dotenv from "dotenv";
+import pool from "./config/db.js";
+
 
 dotenv.config();
 
@@ -9,13 +10,80 @@ const app = express();
 
 const PORT = process.env.PORT || 5000;
 
-connectDB();
 
 app.use(cors());
 app.use(express.json());
 
-app.get("/", (req, res) => {
-  res.send("Hello from Abe Garage and biruk");
+app.get("/api/customers", async (req, res) => {
+  try {
+    const sql = `SELECT id, first_name, last_name, phone FROM customers ORDER BY id`;
+    
+    const [rows] = await pool.query(sql);
+    res.status(200).json({
+      status:"ok",
+      count:rows.length,
+      customers:rows
+    })
+
+  } catch (error) {
+    console.error("Unexpected error:", error.message);
+    res.status(500).json({
+      status: "error",
+      message: "Unexpected error occurred"
+    });
+  }
+});
+
+app.post("/api/customers",async (req,res)=>{
+
+  const {first_name, last_name, phone} = req.body;
+
+  if(
+    typeof first_name !== "string" ||
+    typeof last_name !== "string" ||
+    typeof phone !== "string"||
+    !first_name.trim() ||
+    !last_name.trim() ||
+    !phone.trim()
+  ){
+    return res.status(400).json({
+      status:"error",
+      message:"First name , last name and phone are required",
+    });
+  }
+
+  try{
+     const sql =
+       `INSERT INTO customers (first_name, last_name, phone) VALUES (?,?,?)`;
+
+    const values = [
+      first_name.trim(),
+      last_name.trim(),
+      phone.trim()
+    ];
+
+    const [result] = await pool.execute(sql, values);
+
+    res.status(201).json(
+      {
+        status:"ok",
+        message: "customers created successfully",
+        customerId: {
+          id: result.insertId,
+          first_name:first_name.trim(),
+          last_name:last_name.trim(),
+          phone:phone.trim()
+        },
+      });
+
+  }catch(error){
+    console.error("Failed to create customers:",error.message);
+
+    res.status(500).json({
+      status:"error",
+      message:"Failed to create customers",
+    });
+  }
 });
 
 app.listen(PORT, () => {
