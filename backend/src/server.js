@@ -196,6 +196,41 @@ app.delete("/api/customers/:id",async (req,res)=>{
   
 });
 
+app.get("/api/customers/:id",async(req,res)=>{
+  const id = Number(req.params.id);
+
+  if(!Number.isSafeInteger(id) || id<=0){
+    return res.status(400).json({
+      status:"error",
+      message:"Invalid customer ID"
+    })
+  }
+
+  try {
+    const [rows] = await pool.execute("SELECT id, first_name , last_name, phone , created_at FROM customers WHERE id = ?",[id] );
+
+    if(rows.length === 0){
+      return res.status(404).json({
+        status:"error",
+        message:"Customer not found"
+      })
+    }
+
+    res.status(200).json({
+      status:"ok",
+      customer:rows
+    })
+  } catch (error) {
+    console.error("Failed to get customer",err);
+
+    res.status(500).json({
+      status:"error",
+      message:"Failed to get customer"
+    })
+  }
+
+})
+
 app.listen(PORT, () => {
   console.log(`Server is running on port http://localhost:${PORT}`);
 });
