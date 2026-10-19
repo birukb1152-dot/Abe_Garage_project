@@ -1,0 +1,44 @@
+import express, { json } from 'express'
+import cors from 'cors'
+import pool from './config/db.js'
+import customerRoutes from './routes/customer.routes.js'
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+app.get('/',(req,res)=>{
+    res.send("Hello from abe garage");
+});
+
+app.get('/api/health',async(req,res)=>{
+    try {
+        const [rows] = await pool.execute(`SELECT 
+            VERSION() AS server_version,
+            DATABASE() AS database_name,
+            1 AS test_value
+            `);
+
+            res.status(200).json({
+                status:"ok",
+                database:"connected",
+                server:rows[0].server_version,
+                database:rows[0].database_name,
+                testValue:rows[0].test_value
+            });
+
+    } catch (error) {
+        console.error("Database health check failed",error);
+
+        res.status(500).json({
+            status:"error",
+            database:'disconnected',
+            message:"Database health check failed"
+        })
+    }
+})
+
+app.use("/api/customers",customerRoutes);
+
+export default app;
