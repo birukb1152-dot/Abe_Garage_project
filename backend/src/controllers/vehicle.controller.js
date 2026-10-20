@@ -43,7 +43,7 @@ export const getVehicles =async(req,res)=>{
 }
 
 //get vehicles by id
-export const getVehiclesById = async(req,res)=>{
+export const getVehicleById = async(req,res)=>{
     const id = Number(req.params.id);
 
     if (!Number.isSafeInteger(id) || id <= 0) {

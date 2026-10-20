@@ -1,11 +1,11 @@
 import express from 'express';
 import { getVehicles,
-         getVehiclesById
+         getVehicleById
 } from '../controllers/vehicle.controller.js';
 
 const router = express.Router();
 
 router.get('/', getVehicles);
-router.get('/:id',getVehiclesById);
+router.get('/:id',getVehicleById);
 
 export default router;
