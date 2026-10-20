@@ -50,7 +50,7 @@ export const getCustomerById = async (req, res) => {
       customer: rows,
     });
   } catch (error) {
-    console.error("Failed to get customer", err);
+    console.error("Failed to get customer", error);
 
     res.status(500).json({
       status: "error",
