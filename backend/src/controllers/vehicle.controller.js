@@ -98,3 +98,138 @@ export const getVehicleById = async(req,res)=>{
        })
     }
 }
+
+//create (post) vehicles
+export const createVehiles = async(req,res)=>{
+    const {
+        customer_id,
+        plate_number,
+        year,
+        make,
+        model,
+        type,
+        mileage,
+        tag,
+        serial,
+        color
+    } = req.body;
+
+    if(!Number.isSafeInteger(customer_id) || customer_id <= 0){
+        return res.status(400).json({
+            status:"error",
+            message:"Invalid customer ID"
+        })
+    }
+
+    if(typeof plate_number !== "string" || !plate_number.trim(),
+        typeof make !== "string" || !make.trim(),
+        typeof model !== "string" || !model.trim(),
+        typeof type !== "string" || !type.trim()  
+    ){
+    return res.status(400).json({
+        status:"error",
+        message:"plate number , make , model , year are required"
+    })
+    }
+
+    if(year !== undefined && year !== null && (!Number.isSafeInteger(year) || year <1886 || year > 2100) ){
+        return res.status(400).json({
+            status:"error",
+            message:"Vehicle year must be validate"
+        })
+    }
+
+    if( mileage !== undefined && mileage !== null && (!Number.isSafeInteger(mileage) || mileage < 0)){
+        return res.status(400).json({
+            status:"error",
+            message:"Mileage must be > 0 or not negative"
+        })
+    }
+
+    for(const [filed, value, maxLength] of [
+        ["tags",tag,50],
+        ["serial",serial,100],
+        ["color",color,30],
+    ]){
+        if(value !== undefined && value !== null && value.length > maxLength){
+            return res.status(400).json({
+                status:"error",
+                message:`${filed} must be text of at most ${maxLength} characters`,
+            })
+        }
+    }
+
+    try {
+        const [customers] = await pool.execute(`SELECT id FROM customers WHERE id = ?`,[customer_id]);
+
+        if(customers.length === 0){
+            return res.status(404).json({
+                status:"error",
+                message:"Customer not found"
+            })
+        }
+
+        const sql = `
+        INSERT INTO vehicles(
+        customer_id,
+        plate_number,
+        year,
+        make,
+        model,
+        type,
+        mileage,
+        tag,
+        serial,
+        color
+        )
+         VALUE(?,?,?,?,?,?,?,?,?,?)
+        `;
+
+        const values = [
+            customer_id,
+            plate_number.trim(),
+            year ?? null,
+            make.trim(),
+            model.trim(),
+            type.trim(),
+            mileage ?? null,
+            tag?.trim() || null,
+            serial?.trim() || null,
+            color?.trim() || null
+        ];
+
+        const [result] = await pool.execute(sql,values);
+
+        return res.status(201).json({
+            status:"ok",
+            vehicle:{
+                id:result.insertId,
+                customer_id,
+                plate_number:plate_number.trim(),
+                year:year ?? null,
+                make:make.trim(),
+                model:model.trim(),
+                type:type.trim(),
+                mileage:mileage ?? null,
+                tag:tag?.trim() || null,
+                serial:serial?.trim() || null,
+                color:color?.trim() || null
+            }
+        })
+
+    } catch (error) {
+        if(error.code === "ER_DUP_ENTRY"){
+            return res.status(409).json({
+                status:"error",
+                message:"Vehicle with this plate is already exists"
+            })
+        }
+
+        console.error("Failed to create vehicles",error);
+
+        return res.status(500).json({
+            status:'error',
+            message:"Failed to create vehicles"
+        })
+    }
+}
