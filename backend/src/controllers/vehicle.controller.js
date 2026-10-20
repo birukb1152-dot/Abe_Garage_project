@@ -234,7 +234,7 @@ export const createVehiles = async(req,res)=>{
     }
 }
 
-//update vehicles
+//update vehicle
 export const updateVehicle = async(req,res)=>{
     const id = Number(req.params.id);
 
@@ -382,6 +382,44 @@ export const updateVehicle = async(req,res)=>{
         return res.status(500).json({
             status:'error',
             message:"Failed to create vehicles"
+        })
+    }
+}
+
+//delete vehilcle
+export const deleteVehicle =async(req,res)=>{
+    try {
+        const id = Number(req.params.id);
+
+        if(!Number.isSafeInteger(id) || id<=0){
+            return res.status(400).json({
+                status:"error",
+                message:"Invalid vehicle ID"
+            })
+        }
+
+        const [rows] = await pool.execute(`SELECT id FROM vehicles WHERE id = ?`,[id]);
+
+        if(rows.length === 0){
+            return res.status(404).json({
+                status:"error",
+                message:"Vehicle not found"
+            })
+        }
+
+        await pool.execute(`DELETE FROM vehicles WHERE id = ?`,[id]);
+
+        return res.status(200).json({
+            status:"ok",
+            message:"Vehicle successfully deleted"
+        });
+
+    } catch (error) {
+        console.error("Failed to delete vehicle",error);
+
+        return res.status(500).json({
+            status:"error",
+            message:"Failed to delete vehicle"
         })
     }
 }
