@@ -3,6 +3,7 @@ import cors from 'cors'
 import pool from './config/db.js'
 import customerRoutes from './routes/customer.routes.js'
 import vechileRoutes from './routes/vehicle.routes.js'
+import serviceJobRoutes from './routes/serviceJob.routes.js'
 
 const app = express();
 
@@ -42,5 +43,6 @@ app.get('/api/health',async(req,res)=>{
 
 app.use("/api/customers",customerRoutes);
 app.use("/api/vehicles",vechileRoutes);
+app.use("/api/service-jobs",serviceJobRoutes);
 
 export default app;
