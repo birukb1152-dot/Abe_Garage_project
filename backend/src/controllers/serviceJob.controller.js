@@ -218,3 +218,176 @@ export const createServiceJob = async(req,res)=>{
         });
     }
 }
+
+//update (put) service job
+
+export const updateServiceJob = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { vehicle_id, job_description, status, start_date } = req.body;
+
+    // Validate service job ID
+    const jobId = Number(id);
+
+    if (!Number.isSafeInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "Valid service job ID required",
+      });
+    }
+
+    // Require all update fields
+    if (
+      vehicle_id === undefined ||
+      job_description === undefined ||
+      status === undefined ||
+      start_date === undefined
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "vehicle_id, job_description, status, and start_date are required",
+      });
+    }
+
+    // Validate vehicle ID
+    const vehicleId = Number(vehicle_id);
+
+    if (
+      vehicle_id === null ||
+      !Number.isSafeInteger(vehicleId) ||
+      vehicleId <= 0
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Valid vehicle ID required",
+      });
+    }
+
+    // Validate job description
+    if (typeof job_description !== "string" || job_description.trim() === "") {
+      return res.status(400).json({
+        status: "error",
+        message: "Job description required",
+      });
+    }
+
+    // Validate status
+    const allowedStatuses = [
+      "pending",
+      "in_progress",
+      "completed",
+      "cancelled",
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid job status",
+      });
+    }
+
+    // Validate start date
+    if (start_date !== null) {
+      if (
+        typeof start_date !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(start_date)
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Start date must use YYYY-MM-DD format or be null",
+        });
+      }
+
+      const date = new Date(`${start_date}T00:00:00Z`);
+
+      if (
+        Number.isNaN(date.getTime()) ||
+        date.toISOString().slice(0, 10) !== start_date
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid start date",
+        });
+      }
+    }
+
+    // Check whether the service job exists
+    const [jobs] = await pool.execute(
+      "SELECT id FROM service_jobs WHERE id = ?",
+      [jobId],
+    );
+
+    if (jobs.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Service job not found",
+      });
+    }
+
+    // Check whether the vehicle exists
+    const [vehicles] = await pool.execute(
+      "SELECT id FROM vehicles WHERE id = ?",
+      [vehicleId],
+    );
+
+    if (vehicles.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Vehicle not found",
+      });
+    }
+
+    // Update the service job and manage completion date
+    const sql = `
+            UPDATE service_jobs
+            SET completion_date = CASE
+                    WHEN ? <> 'completed' THEN NULL
+                    WHEN status <> 'completed' THEN CURDATE()
+                    ELSE COALESCE(completion_date, CURDATE())
+                END,
+                vehicle_id = ?,
+                job_description = ?,
+                status = ?,
+                start_date = ?
+            WHERE id = ?
+        `;
+
+    await pool.execute(sql, [
+      status,
+      vehicleId,
+      job_description.trim(),
+      status,
+      start_date,
+      jobId,
+    ]);
+
+    // Fetch the updated service job
+    const [updatedJobs] = await pool.execute(
+      `SELECT
+                id,
+                vehicle_id,
+                job_description,
+                status,
+                start_date,
+                completion_date,
+                created_at
+             FROM service_jobs
+             WHERE id = ?`,
+      [jobId],
+    );
+
+    return res.status(200).json({
+      status: "ok",
+      message: "Service job updated successfully",
+      serviceJob: updatedJobs[0],
+    });
+  } catch (error) {
+    console.error("Failed to update service job", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to update service job",
+    });
+  }
+};
