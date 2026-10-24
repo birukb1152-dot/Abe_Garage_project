@@ -391,3 +391,44 @@ export const updateServiceJob = async (req, res) => {
     });
   }
 };
+
+//delete service job
+export const deleteServiceJob = async(req,res)=>{
+  try {
+    const {id}  = req.params;
+
+    const jobId = Number(id);
+
+    if(!Number.isSafeInteger(jobId) || jobId <= 0){
+      return res.status(400).json({
+        status:"error",
+        message:"Valid job service id required"
+      })
+    }
+
+    const [jobs] = await pool.execute(`SELECT id FROM service_jobs WHERE id = ?`,[jobId]);
+
+    if(jobs.length === 0){
+      return res.status(404).json({
+        status:"error",
+        message:"Service job not found"
+      })
+    }
+
+    await pool.execute(`DELETE FROM service_jobs WHERE id = ?`,[jobId]);
+
+    return res.status(200).json({
+      status:"ok",
+      message:"Succefully deleted"
+    })
+
+
+  } catch (error) {
+    console.error("Failed to delete service job",error);
+
+    return res.status(500).json({
+      status:"error",
+      message:"Failed to delete service job"
+    })
+  }
+}
