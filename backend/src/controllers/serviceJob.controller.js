@@ -3,7 +3,37 @@ import pool from "../config/db.js";
 //get service jobs
 export const getServiceJobs = async(req,res)=>{
     try {
-        const sql = `SELECT 
+
+      const {status , vehicle_id} = req.query;
+
+      const allowedStatuses = [
+        "pending",
+        "in_progress",
+        "completed",
+        "cancelled"
+      ];
+
+      if(status != undefined && !allowedStatuses.includes(status)){
+        return res.status(400).json({
+          status:"error",
+          message:"Valid job status required"
+        })
+      }
+
+      let vehicleId;
+
+      if(vehicle_id !== undefined){
+        vehicleId = Number(vehicle_id);
+
+        if(vehicle_id.trim() === "" || !Number.isSafeInteger(vehicleId) || vehicleId <= 0){
+          return res.status(400).json({
+            status:"error",
+            message:"Valid vehicle id required"
+          })
+        }
+      }
+
+        let sql = `SELECT 
         sj.id,
         sj.vehicle_id,
         sj.job_description,
@@ -22,9 +52,30 @@ export const getServiceJobs = async(req,res)=>{
         FROM service_jobs sj
         INNER JOIN vehicles v ON sj.vehicle_id = v.id
         INNER JOIN customers c ON v.customer_id = c.id
-        ORDER BY sj.id DESC`;
+        `;
 
-        const [rows] = await pool.execute(sql);
+
+        const conditions = [];
+        const params = [];
+
+        if (status !== undefined) {
+          conditions.push("sj.status = ?");
+          params.push(status);
+        }
+
+        if (vehicle_id !== undefined) {
+          conditions.push("sj.vehicle_id = ?");
+          params.push(vehicleId);
+        }
+
+        if (conditions.length > 0) {
+          sql += ` WHERE ${conditions.join(" AND ")}`;
+        }
+
+        sql += " ORDER BY sj.id DESC";
+
+
+        const [rows] = await pool.execute(sql,params);
 
         return res.status(200).json({
             status:"ok",
@@ -379,7 +430,6 @@ export const updateServiceJob = async (req, res) => {
       jobId,
     ]);
 
-    // Fetch the updated service job
     // Fetch the updated service job with vehicle and customer details
     const [updatedJobs] = await pool.execute(
       `SELECT
