@@ -197,17 +197,34 @@ export const createServiceJob = async(req,res)=>{
             ]
         );
 
+        const [createdJobs] = await pool.execute(
+          `SELECT
+          sj.id,
+          sj.vehicle_id,
+          sj.job_description,
+          sj.status,
+          sj.start_date,
+          sj.completion_date,
+          sj.created_at,
+          v.plate_number,
+          v.make,
+          v.model,
+          c.id AS customer_id,
+          c.first_name AS customer_first_name,
+          c.last_name AS customer_last_name,
+          c.phone AS customer_phone
+          FROM service_jobs sj
+          INNER JOIN vehicles v ON sj.vehicle_id = v.id
+          INNER JOIN customers c ON v.customer_id = c.id
+          WHERE sj.id = ?`,
+          [result.insertId],
+        );
+
         return res.status(201).json({
-            status:"ok",
-            message:"Job successfully create",
-            serviceJob:{
-                id:result.insertId,
-                vehicle_id:Number(vehicle_id),
-                job_description:job_description.trim(),
-                status:jobStatus,
-                start_date:start_date ?? null
-            }
-        })
+          status: "ok",
+          message: "Service job created successfully",
+          serviceJob: createdJobs[0],
+        });
 
     } catch (error) {
         console.error("Failed to create service job",error);
@@ -363,17 +380,27 @@ export const updateServiceJob = async (req, res) => {
     ]);
 
     // Fetch the updated service job
+    // Fetch the updated service job with vehicle and customer details
     const [updatedJobs] = await pool.execute(
       `SELECT
-                id,
-                vehicle_id,
-                job_description,
-                status,
-                start_date,
-                completion_date,
-                created_at
-             FROM service_jobs
-             WHERE id = ?`,
+      sj.id,
+      sj.vehicle_id,
+      sj.job_description,
+      sj.status,
+      sj.start_date,
+      sj.completion_date,
+      sj.created_at,
+      v.plate_number,
+      v.make,
+      v.model,
+      c.id AS customer_id,
+      c.first_name AS customer_first_name,
+      c.last_name AS customer_last_name,
+      c.phone AS customer_phone
+      FROM service_jobs sj
+      INNER JOIN vehicles v ON sj.vehicle_id = v.id
+      INNER JOIN customers c ON v.customer_id = c.id
+      WHERE sj.id = ?`,
       [jobId],
     );
 
