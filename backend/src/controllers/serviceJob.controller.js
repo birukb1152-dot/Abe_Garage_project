@@ -1,39 +1,112 @@
 import pool from "../config/db.js";
 
 //get service jobs
-export const getServiceJobs = async(req,res)=>{
-    try {
 
-      const {status , vehicle_id} = req.query;
+export const getServiceJobs = async (req, res) => {
+  try {
+    const { status, vehicle_id, page = "1", limit = "10" } = req.query;
 
-      const allowedStatuses = [
-        "pending",
-        "in_progress",
-        "completed",
-        "cancelled"
-      ];
+    // Validate pagination parameters
+    const pageNumber = Number(page);
+    const limitNumber = Number(limit);
 
-      if(status != undefined && !allowedStatuses.includes(status)){
+    if (
+      typeof page !== "string" ||
+      page.trim() === "" ||
+      !Number.isSafeInteger(pageNumber) ||
+      pageNumber <= 0
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Page must be a positive integer",
+      });
+    }
+
+    if (
+      typeof limit !== "string" ||
+      limit.trim() === "" ||
+      !Number.isSafeInteger(limitNumber) ||
+      limitNumber <= 0 ||
+      limitNumber > 100
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Limit must be an integer between 1 and 100",
+      });
+    }
+
+    const allowedStatuses = [
+      "pending",
+      "in_progress",
+      "completed",
+      "cancelled",
+    ];
+
+    // Validate status
+    if (status !== undefined && !allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Valid job status required",
+      });
+    }
+
+    // Validate vehicle ID
+    let vehicleId;
+
+    if (vehicle_id !== undefined) {
+      vehicleId = Number(vehicle_id);
+
+      if (
+        vehicle_id.trim() === "" ||
+        !Number.isSafeInteger(vehicleId) ||
+        vehicleId <= 0
+      ) {
         return res.status(400).json({
-          status:"error",
-          message:"Valid job status required"
-        })
+          status: "error",
+          message: "Valid vehicle ID required",
+        });
       }
+    }
 
-      let vehicleId;
+    // Build the filtering conditions
+    const conditions = [];
+    const params = [];
 
-      if(vehicle_id !== undefined){
-        vehicleId = Number(vehicle_id);
+    if (status !== undefined) {
+      conditions.push("sj.status = ?");
+      params.push(status);
+    }
 
-        if(vehicle_id.trim() === "" || !Number.isSafeInteger(vehicleId) || vehicleId <= 0){
-          return res.status(400).json({
-            status:"error",
-            message:"Valid vehicle id required"
-          })
-        }
-      }
+    if (vehicle_id !== undefined) {
+      conditions.push("sj.vehicle_id = ?");
+      params.push(vehicleId);
+    }
 
-        let sql = `SELECT 
+    let whereClause = "";
+
+    if (conditions.length > 0) {
+      whereClause = ` WHERE ${conditions.join(" AND ")}`;
+    }
+
+    // Count all jobs matching the filters
+    const countSql = `
+      SELECT COUNT(*) AS total
+      FROM service_jobs sj
+      INNER JOIN vehicles v ON sj.vehicle_id = v.id
+      INNER JOIN customers c ON v.customer_id = c.id
+      ${whereClause}
+    `;
+
+    const [countRows] = await pool.execute(countSql, params);
+    const total = Number(countRows[0].total);
+
+    // Calculate pagination
+    const offset = (pageNumber - 1) * limitNumber;
+    const totalPages = Math.ceil(total / limitNumber);
+
+    // Retrieve jobs for the requested page
+    const sql = `
+      SELECT
         sj.id,
         sj.vehicle_id,
         sj.job_description,
@@ -48,50 +121,39 @@ export const getServiceJobs = async(req,res)=>{
         c.first_name AS customer_first_name,
         c.last_name AS customer_last_name,
         c.phone AS customer_phone
-        
-        FROM service_jobs sj
-        INNER JOIN vehicles v ON sj.vehicle_id = v.id
-        INNER JOIN customers c ON v.customer_id = c.id
-        `;
+      FROM service_jobs sj
+      INNER JOIN vehicles v ON sj.vehicle_id = v.id
+      INNER JOIN customers c ON v.customer_id = c.id
+      ${whereClause}
+      ORDER BY sj.id DESC
+      LIMIT ? OFFSET ?
+    `;
 
+    const [rows] = await pool.execute(sql, [...params, limitNumber, offset]);
 
-        const conditions = [];
-        const params = [];
+    return res.status(200).json({
+      status: "ok",
+      pagination: {
+        total,
+        page: pageNumber,
+        limit: limitNumber,
+        totalPages,
+        hasNextPage: pageNumber < totalPages,
+        hasPreviousPage: pageNumber > 1 && total > 0,
+      },
+      count: rows.length,
+      serviceJobs: rows,
+    });
+  } catch (error) {
+    console.error("Failed to get service jobs", error);
 
-        if (status !== undefined) {
-          conditions.push("sj.status = ?");
-          params.push(status);
-        }
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to get service jobs",
+    });
+  }
+};
 
-        if (vehicle_id !== undefined) {
-          conditions.push("sj.vehicle_id = ?");
-          params.push(vehicleId);
-        }
-
-        if (conditions.length > 0) {
-          sql += ` WHERE ${conditions.join(" AND ")}`;
-        }
-
-        sql += " ORDER BY sj.id DESC";
-
-
-        const [rows] = await pool.execute(sql,params);
-
-        return res.status(200).json({
-            status:"ok",
-            count:rows.length,
-            serviceJobs:rows
-        });
-
-    } catch (error) {
-        console.error("Failed to get service jobs", error);
-
-        return res.status(500).json({
-            status:"error",
-            message:"Failed to get service jobs"
-        })
-    }
-}
 
 
 //get one service job
