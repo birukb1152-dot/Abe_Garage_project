@@ -243,6 +243,7 @@ export const createServiceJob = async(req,res)=>{
 
         if(vehicle_id === undefined ||
             vehicle_id === null ||
+            (typeof vehicle_id === "string" && vehicle_id.trim() === "")||
             !Number.isSafeInteger(Number(vehicleId)) ||
             vehicleId <= 0
         ){
@@ -259,6 +260,13 @@ export const createServiceJob = async(req,res)=>{
                 status:"error",
                 message:"Job description requied"
             })
+        }
+
+        if (job_description.trim().length > 5000) {
+          return res.status(400).json({
+            status: "error",
+            message: "Job description cannot exceed 5000 characters",
+          });
         }
 
         if (start_date !== undefined && start_date !== null) {
@@ -303,7 +311,7 @@ export const createServiceJob = async(req,res)=>{
 
         const [vehicles] = await pool.execute(`
             SELECT id FROM vehicles WHERE id = ?`,
-            [Number(vehicle_id)]);
+            [vehicleId]);
 
         if(vehicles.length === 0){
             return res.status(404).json({
@@ -320,7 +328,7 @@ export const createServiceJob = async(req,res)=>{
         const [result] = await pool.execute(
             sql,
             [
-                Number(vehicle_id),
+                vehicleId,
                 job_description.trim(),
                 jobStatus,
                 start_date ?? null
