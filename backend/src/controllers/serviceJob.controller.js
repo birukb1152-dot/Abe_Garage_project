@@ -4,7 +4,7 @@ import pool from "../config/db.js";
 
 export const getServiceJobs = async (req, res) => {
   try {
-    const { status, vehicle_id, page = "1", limit = "10" } = req.query;
+    const { status, vehicle_id, search , page = "1", limit = "10" } = req.query;
 
     // Validate pagination parameters
     const pageNumber = Number(page);
@@ -82,6 +82,25 @@ export const getServiceJobs = async (req, res) => {
       params.push(vehicleId);
     }
 
+    if(search !== undefined){
+      if(typeof search !== "string" || search.trim() === ""){
+        return res.status(400).json({
+          status:"error",
+          message:"search term can't be empty"
+        })
+      }
+
+      const searchTerm = `%${search.trim()}%`;
+
+      conditions.push(`(
+        v.plate_number LIKE ? 
+        OR c.first_name LIKE ?
+        OR c.last_name LIKE ?
+        )`);
+
+        params.push(searchTerm , searchTerm , searchTerm);
+    }
+
     let whereClause = "";
 
     if (conditions.length > 0) {
@@ -153,8 +172,6 @@ export const getServiceJobs = async (req, res) => {
     });
   }
 };
-
-
 
 //get one service job
 export const getServiceJob = async(req,res)=>{
