@@ -121,10 +121,14 @@ export const createVehiles = async(req,res)=>{
         })
     }
 
-    if(typeof plate_number !== "string" || !plate_number.trim(),
-        typeof make !== "string" || !make.trim(),
-        typeof model !== "string" || !model.trim(),
-        typeof type !== "string" || !type.trim()  
+    if(typeof plate_number !== "string" || 
+        !plate_number.trim() ||
+        typeof make !== "string" || 
+        !make.trim() ||
+        typeof model !== "string" || 
+        !model.trim()||
+        typeof type !== "string" || 
+        !type.trim()  
     ){
     return res.status(400).json({
         status:"error",
@@ -132,31 +136,57 @@ export const createVehiles = async(req,res)=>{
     })
     }
 
-    if(year !== undefined && year !== null && (!Number.isSafeInteger(year) || year <1886 || year > 2100) ){
+    if(year !== undefined && 
+        year !== null && 
+        (!Number.isSafeInteger(year) || year <1886 || year > 2100) ){
         return res.status(400).json({
-            status:"error",
-            message:"Vehicle year must be validate"
-        })
+          status: "error",
+          message: "Vehicle year must be an integer between 1886 and 2100",
+        });
     }
 
-    if( mileage !== undefined && mileage !== null && (!Number.isSafeInteger(mileage) || mileage < 0)){
+    if( mileage !== undefined && 
+        mileage !== null && 
+        (!Number.isSafeInteger(mileage) || mileage < 0)){
         return res.status(400).json({
-            status:"error",
-            message:"Mileage must be > 0 or not negative"
-        })
+          status: "error",
+          message: "Mileage must be a non-negative integer",
+        });
     }
 
-    for(const [filed, value, maxLength] of [
-        ["tags",tag,50],
-        ["serial",serial,100],
-        ["color",color,30],
-    ]){
-        if(value !== undefined && value !== null && value.length > maxLength){
-            return res.status(400).json({
-                status:"error",
-                message:`${filed} must be text of at most ${maxLength} characters`,
-            })
+    for (const [field, value, maxLength] of [
+      ["tag", tag, 50],
+      ["serial", serial, 100],
+      ["color", color, 30],
+    ]) {
+      if (value !== undefined && value !== null) {
+        if (typeof value !== "string") {
+          return res.status(400).json({
+            status: "error",
+            message: `${field} must be a string`,
+          });
         }
+
+        if (value.trim().length > maxLength) {
+          return res.status(400).json({
+            status: "error",
+            message: `${field} must be at most ${maxLength} characters`,
+          });
+        }
+      }
+    }
+
+    if (
+      plate_number.trim().length > 20 ||
+      make.trim().length > 50 ||
+      model.trim().length > 50 ||
+      type.trim().length > 30
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Plate number must be at most 20 characters, make and model at most 50 characters, and type at most 30 characters",
+      });
     }
 
     try {
