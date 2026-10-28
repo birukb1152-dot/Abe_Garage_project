@@ -176,9 +176,13 @@ export const getServiceJobs = async (req, res) => {
 //get one service job
 export const getServiceJob = async(req,res)=>{
     try {
-        const id = Number(req.params.id);
+        const {id: rawId }= req.params;
+        const id = Number(rawId);
 
-        if(!Number.isSafeInteger(id) || id <= 0){
+        if(typeof rawId !== "string" ||
+          rawId.trim() === "" ||
+          !/^[1-9]\d*$/.test(rawId)||
+          !Number.isSafeInteger(id) ){
             return res.status(400).json({
                 status:"error",
                 message:"Invalid service job ID"
