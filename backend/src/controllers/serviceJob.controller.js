@@ -56,10 +56,10 @@ export const getServiceJobs = async (req, res) => {
     if (vehicle_id !== undefined) {
       vehicleId = Number(vehicle_id);
 
-      if (
+      if (typeof vehicle_id !== "string"||
         vehicle_id.trim() === "" ||
-        !Number.isSafeInteger(vehicleId) ||
-        vehicleId <= 0
+        !/^[1-9]\d*$/.test(vehicle_id)||
+        !Number.isSafeInteger(vehicleId) 
       ) {
         return res.status(400).json({
           status: "error",
@@ -85,9 +85,9 @@ export const getServiceJobs = async (req, res) => {
     if(search !== undefined){
       if(typeof search !== "string" || search.trim() === ""){
         return res.status(400).json({
-          status:"error",
-          message:"search term can't be empty"
-        })
+          status: "error",
+          message: "Search term must be a non-empty string",
+        });
       }
 
       const searchTerm = `%${search.trim()}%`;
