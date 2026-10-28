@@ -410,6 +410,7 @@ export const updateServiceJob = async (req, res) => {
 
     if (
       vehicle_id === null ||
+      (typeof vehicle_id === "string" && vehicle_id.trim() === "")||
       !Number.isSafeInteger(vehicleId) ||
       vehicleId <= 0
     ) {
@@ -424,6 +425,13 @@ export const updateServiceJob = async (req, res) => {
       return res.status(400).json({
         status: "error",
         message: "Job description required",
+      });
+    }
+
+    if (job_description.trim().length > 5000) {
+      return res.status(400).json({
+        status: "error",
+        message: "Job description cannot exceed 5000 characters",
       });
     }
 
