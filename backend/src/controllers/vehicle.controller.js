@@ -20,7 +20,9 @@ export const getVehicles =async(req,res)=>{
     v.color,
     v.created_at
 
-    FROM vehicles v INNER JOIN customers c ON v.customer_id = c.id
+    FROM vehicles v
+    INNER JOIN customers c ON v.customer_id = c.id
+    ORDER BY v.id ASC
     `;
 
     const [rows] = await pool.execute(sql);
@@ -32,11 +34,11 @@ export const getVehicles =async(req,res)=>{
     })
     }
     catch(error){
-        console.error("Failed to get vehicles",error);
+        console.error("Failed to fetch vehicles",error.message);
 
         res.status(500).json({
             status:"error",
-            message:"Failed to get vehiles"
+            message:"Failed to fetch vehiles"
         })
 
     }
@@ -46,7 +48,8 @@ export const getVehicles =async(req,res)=>{
 export const getVehicleById = async(req,res)=>{
     const id = Number(req.params.id);
 
-    if (!Number.isSafeInteger(id) || id <= 0) {
+    if (!/^[1-9]\d*$/.test(req.params.id) ||
+        !Number.isSafeInteger(id)) {
       res.status(400).json({
         status: "error",
         message: "Invalid vehicle ID",
@@ -86,7 +89,7 @@ export const getVehicleById = async(req,res)=>{
 
     return res.status(200).json({
         status:"ok",
-        vechiles:rows[0]
+        vechile:rows[0]
     })
 
     } catch (error) {
@@ -268,7 +271,8 @@ export const createVehiles = async(req,res)=>{
 export const updateVehicle = async(req,res)=>{
     const id = Number(req.params.id);
 
-    if(!Number.isSafeInteger(id) || id<=0){
+    if(!/^[1-9]\d*$/.test(req.params.id)||
+        !Number.isSafeInteger(id)){
         return res.status(400).json({
             status:"error",
             message:"Invalid vehicle ID"
@@ -288,16 +292,23 @@ export const updateVehicle = async(req,res)=>{
         color
     } = req.body;
 
-    if(!Number.isSafeInteger(customer_id) || customer_id <= 0,
-        typeof plate_number !== "string" || !plate_number.trim(),
-        typeof make !== "string" || !make.trim(),
-        typeof model !== "string" || !model.trim(),
-        typeof type !== "string" || !type.trim()){
-
-        return res.status(400).json({
-            status:"error",
-            message:"customer id, plate number , make , model and type are required"
-        })
+    if (
+      !Number.isSafeInteger(customer_id) ||
+      customer_id <= 0 ||
+      typeof plate_number !== "string" ||
+      !plate_number.trim() ||
+      typeof make !== "string" ||
+      !make.trim() ||
+      typeof model !== "string" ||
+      !model.trim() ||
+      typeof type !== "string" ||
+      !type.trim()
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "customer id, plate number , make , model and type are required",
+      });
     }
 
     if (
@@ -307,7 +318,7 @@ export const updateVehicle = async(req,res)=>{
     ) {
       return res.status(400).json({
         status: "error",
-        message: "Vehicle year must be validate",
+        message: "Vehicle year must be an integer between 1886 and 2100",
       });
     }
 
@@ -322,18 +333,44 @@ export const updateVehicle = async(req,res)=>{
       });
     }
 
-    for (const [filed, value, maxLength] of [
-      ["tags", tag, 50],
-      ["serial", serial, 100],
-      ["color", color, 30],
-    ]) {
-      if (value !== undefined && value !== null && value.length > maxLength) {
-        return res.status(400).json({
-          status: "error",
-          message: `${filed} must be text of at most ${maxLength} characters`,
-        });
-      }
+    
+for (const [field, value, maxLength] of [
+  ["tag", tag, 50],
+  ["serial", serial, 100],
+  ["color", color, 30],
+]) {
+  if (value !== undefined && value !== null) {
+    if (typeof value !== "string") {
+      return res.status(400).json({
+        status: "error",
+        message: `${field} must be a string`,
+      });
     }
+
+    if (value.trim().length > maxLength) {
+      return res.status(400).json({
+        status: "error",
+        message: `${field} must be at most ${maxLength} characters`,
+      });
+    }
+  }
+}
+
+
+
+if (
+  plate_number.trim().length > 20 ||
+  make.trim().length > 50 ||
+  model.trim().length > 50 ||
+  type.trim().length > 30
+) {
+  return res.status(400).json({
+    status: "error",
+    message:
+      "Plate number must be at most 20 characters, make and model at most 50 characters, and type at most 30 characters",
+  });
+}
+
 
     try {
         const [vehicles] = await pool.execute(`SELECT id FROM vehicles WHERE id = ?`,[id]);
@@ -381,9 +418,9 @@ export const updateVehicle = async(req,res)=>{
             id
         ];
 
-        await pool.execute(sql,values);
+        const [result] = await pool.execute(sql,values);
 
-        return res.status(201).json({
+        return res.status(200).json({
           status: "ok",
           vehicle: {
             id,
@@ -402,16 +439,16 @@ export const updateVehicle = async(req,res)=>{
     } catch (error) {
         if(error.code === "ER_DUP_ENTRY"){
             return res.status(409).json({
-                status:"error",
-                message:"Vehicle with this plate is already exists"
-            })
+              status: "error",
+              message: "A vehicle with this plate number already exists",
+            });
         }
 
-        console.error("Failed to create vehicles",error);
+        console.error("Failed to update vehicles",error);
 
         return res.status(500).json({
             status:'error',
-            message:"Failed to create vehicles"
+            message:"Failed to update vehicles"
         })
     }
 }
@@ -419,37 +456,47 @@ export const updateVehicle = async(req,res)=>{
 //delete vehilcle
 export const deleteVehicle =async(req,res)=>{
     try {
-        const id = Number(req.params.id);
+      const id = Number(req.params.id);
 
-        if(!Number.isSafeInteger(id) || id<=0){
-            return res.status(400).json({
-                status:"error",
-                message:"Invalid vehicle ID"
-            })
-        }
-
-        const [rows] = await pool.execute(`SELECT id FROM vehicles WHERE id = ?`,[id]);
-
-        if(rows.length === 0){
-            return res.status(404).json({
-                status:"error",
-                message:"Vehicle not found"
-            })
-        }
-
-        await pool.execute(`DELETE FROM vehicles WHERE id = ?`,[id]);
-
-        return res.status(200).json({
-            status:"ok",
-            message:"Vehicle successfully deleted"
+      if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid vehicle ID",
         });
+      }
 
+      const [rows] = await pool.execute(
+        `SELECT id FROM vehicles WHERE id = ?`,
+        [id],
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "Vehicle not found",
+        });
+      }
+
+      await pool.execute(`DELETE FROM vehicles WHERE id = ?`, [id]);
+
+      return res.status(200).json({
+        status: "ok",
+        message: "Vehicle successfully deleted",
+      });
     } catch (error) {
-        console.error("Failed to delete vehicle",error);
+      if (error.code === "ER_ROW_IS_REFERENCED_2") {
+        return res.status(409).json({
+          status: "error",
+          message:
+            "Cannot delete this vehicle because related service jobs exist. Remove or reassign the related service jobs first.",
+        });
+      }
 
-        return res.status(500).json({
-            status:"error",
-            message:"Failed to delete vehicle"
-        })
+      console.error("Failed to delete vehicle:", error);
+
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to delete vehicle",
+      });
     }
 }
