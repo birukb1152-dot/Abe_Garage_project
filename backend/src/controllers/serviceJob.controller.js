@@ -571,7 +571,10 @@ export const deleteServiceJob = async(req,res)=>{
 
     const jobId = Number(id);
 
-    if(!Number.isSafeInteger(jobId) || jobId <= 0){
+    if(typeof id !== "string" ||
+      id.trim() === "" ||
+      !/^[1-9]\d*$/.test(id) ||
+      !Number.isSafeInteger(jobId)){
       return res.status(400).json({
         status:"error",
         message:"Valid job service id required"
