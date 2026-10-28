@@ -13,10 +13,10 @@ export const getCustomer = async (req, res) => {
       customers: rows,
     });
   } catch (error) {
-    console.error("Unexpected error:", error.message);
+    console.error("Failed to fetch customers:", error.message);
     res.status(500).json({
       status: "error",
-      message: "Unexpected error occurred",
+      message: "Failed to fetch customers",
     });
   }
 };
@@ -25,7 +25,8 @@ export const getCustomer = async (req, res) => {
 export const getCustomerById = async (req, res) => {
   const id = Number(req.params.id);
 
-  if (!Number.isSafeInteger(id) || id <= 0) {
+  if (!/^[1-9]\d*$/.test(req.params.id)||
+    !Number.isSafeInteger(id)) {
     return res.status(400).json({
       status: "error",
       message: "Invalid customer ID",
@@ -47,7 +48,7 @@ export const getCustomerById = async (req, res) => {
 
     res.status(200).json({
       status: "ok",
-      customer: rows,
+      customer: rows[0],
     });
   } catch (error) {
     console.error("Failed to get customer", error);
@@ -77,6 +78,28 @@ export const createCustomer = async (req, res) => {
       message: "First name , last name and phone are required",
     });
   }
+
+  
+  if (
+    first_name.trim().length > 50 ||
+    last_name.trim().length > 50 ||
+    phone.trim().length > 20
+  ) {
+    return res.status(400).json({
+      status: "error",
+      message:
+        "First name must be at most 50 characters, last name at most 50 characters, and phone at most 20 characters",
+    });
+  }
+
+  
+if (!/^\+251[1-9]\d{8}$/.test(phone.trim())) {
+  return res.status(400).json({
+    status: "error",
+    message:"Phone number must use Ethiopian international format, e.g. +251912345678",
+  });
+}
+
 
   try {
     const sql = `INSERT INTO customers (first_name, last_name, phone) VALUES (?,?,?)`;
@@ -110,7 +133,8 @@ export const updateCustomer = async (req, res) => {
   const id = Number(req.params.id);
   const { first_name, last_name, phone } = req.body;
 
-  if (!Number.isSafeInteger(id) || id <= 0) {
+  if (!/^[0-9]\d*$/.test(req.params.id) ||
+  !Number.isSafeInteger(id)) {
     return res.status(400).json({
       status: "error",
       message: "Invalid customer ID",
@@ -128,6 +152,25 @@ export const updateCustomer = async (req, res) => {
     return res.status(400).json({
       status: "error",
       message: "First name, last name and phone are required",
+    });
+  }
+
+  if (
+    first_name.trim().length > 50 ||
+    last_name.trim().length > 50 ||
+    phone.trim().length > 20
+  ) {
+    return res.status(400).json({
+      status: "error",
+      message:
+        "First name must be at most 50 characters, last name at most 50 characters, and phone at most 20 characters",
+    });
+  }
+
+  if (!/^\+251[1-9]\d{8}$/.test(phone.trim())) {
+    return res.status(400).json({
+      status: "error",
+      message:"Phone number must use Ethiopian international format, e.g. +251912345678",
     });
   }
 
@@ -181,7 +224,8 @@ export const updateCustomer = async (req, res) => {
 export const deleteCustomer = async (req, res) => {
   const id = Number(req.params.id);
 
-  if (!Number.isSafeInteger(id) || id <= 0) {
+  if (!/^[1-9]\d*$/.test(req.params.id)||
+    !Number.isSafeInteger(id)) {
     return res.status(400).json({
       status: "error",
       message: "Invalid customer ID",
@@ -206,9 +250,16 @@ export const deleteCustomer = async (req, res) => {
       customerId: id,
     });
   } catch (err) {
-    console.error("Failed to delete customer", err);
+    console.error("Failed to delete customer:", err.message);
 
-    res.status(500).json({
+    if (err.code === "ER_ROW_IS_REFERENCED_2") {
+      return res.status(409).json({
+        status: "error",
+        message:"Cannot delete this customer because related records exist. Remove or reassign the related records first.",
+      });
+    }
+
+    return res.status(500).json({
       status: "error",
       message: "Failed to delete customer",
     });
