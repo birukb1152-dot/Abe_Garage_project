@@ -30,7 +30,7 @@ export const getVehicles =async(req,res)=>{
     res.status(200).json({
         status:"ok",
         count:rows.length,
-        vechiles:rows
+        vehicles:rows
     })
     }
     catch(error){
@@ -38,7 +38,7 @@ export const getVehicles =async(req,res)=>{
 
         res.status(500).json({
             status:"error",
-            message:"Failed to fetch vehiles"
+            message:"Failed to fetch vehicles"
         })
 
     }
