@@ -2,7 +2,7 @@ import pool from '../config/db.js';
 
 
 //get all customers
-export const getCustomer = async (req, res) => {
+export const getCustomer = async (req, res, next) => {
   try {
     const sql = `SELECT id, first_name, last_name, phone FROM customers ORDER BY id`;
 
@@ -14,10 +14,7 @@ export const getCustomer = async (req, res) => {
     });
   } catch (error) {
     console.error("Failed to fetch customers:", error.message);
-    res.status(500).json({
-      status: "error",
-      message: "Failed to fetch customers",
-    });
+    next(error);
   }
 };
 
