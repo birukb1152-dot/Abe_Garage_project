@@ -110,8 +110,8 @@ if (!/^\+251[1-9]\d{8}$/.test(phone.trim())) {
 
     res.status(201).json({
       status: "ok",
-      message: "customers created successfully",
-      customerId: {
+      message: "Customer created successfully",
+      customer: {
         id: result.insertId,
         first_name: first_name.trim(),
         last_name: last_name.trim(),
@@ -133,7 +133,7 @@ export const updateCustomer = async (req, res) => {
   const id = Number(req.params.id);
   const { first_name, last_name, phone } = req.body;
 
-  if (!/^[0-9]\d*$/.test(req.params.id) ||
+  if (!/^[1-9]\d*$/.test(req.params.id) ||
   !Number.isSafeInteger(id)) {
     return res.status(400).json({
       status: "error",
