@@ -245,16 +245,16 @@ export const createServiceJob = async(req,res)=>{
 
         const vehicleId = Number(vehicle_id);
 
-        if(vehicle_id === undefined ||
-            vehicle_id === null ||
-            (typeof vehicle_id === "string" && vehicle_id.trim() === "")||
-            !Number.isSafeInteger(Number(vehicleId)) ||
-            vehicleId <= 0
-        ){
-            return res.status(400).json({
-              status: "error",
-              message: "Valid vehicle ID requied",
-            });
+        if (
+          (typeof vehicle_id !== "string" && typeof vehicle_id !== "number") ||
+          (typeof vehicle_id === "string" && !/^[1-9]\d*$/.test(vehicle_id)) ||
+          !Number.isSafeInteger(vehicleId) ||
+          vehicleId <= 0
+        ) {
+          return res.status(400).json({
+            status: "error",
+            message: "Valid vehicle ID required",
+          });
         }
 
         if(typeof job_description != "string" ||
@@ -379,7 +379,6 @@ export const createServiceJob = async(req,res)=>{
 }
 
 //update (put) service job
-
 export const updateServiceJob = async (req, res) => {
   try {
     const { id } = req.params;
@@ -388,7 +387,12 @@ export const updateServiceJob = async (req, res) => {
     // Validate service job ID
     const jobId = Number(id);
 
-    if (!Number.isSafeInteger(jobId) || jobId <= 0) {
+    if (
+      typeof id !== "string" ||
+      id.trim() === "" ||
+      !/^[1-9]\d*$/.test(id) ||
+      !Number.isSafeInteger(jobId)
+    ) {
       return res.status(400).json({
         status: "error",
         message: "Valid service job ID required",
@@ -413,8 +417,8 @@ export const updateServiceJob = async (req, res) => {
     const vehicleId = Number(vehicle_id);
 
     if (
-      vehicle_id === null ||
-      (typeof vehicle_id === "string" && vehicle_id.trim() === "")||
+      (typeof vehicle_id !== "string" && typeof vehicle_id !== "number") ||
+      (typeof vehicle_id === "string" && !/^[1-9]\d*$/.test(vehicle_id)) ||
       !Number.isSafeInteger(vehicleId) ||
       vehicleId <= 0
     ) {
@@ -597,9 +601,9 @@ export const deleteServiceJob = async(req,res)=>{
     await pool.execute(`DELETE FROM service_jobs WHERE id = ?`,[jobId]);
 
     return res.status(200).json({
-      status:"ok",
-      message:"Succefully deleted"
-    })
+      status: "ok",
+      message: "Service job deleted successfully",
+    });
 
 
   } catch (error) {
