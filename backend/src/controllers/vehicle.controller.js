@@ -50,7 +50,7 @@ export const getVehicleById = async(req,res)=>{
 
     if (!/^[1-9]\d*$/.test(req.params.id) ||
         !Number.isSafeInteger(id)) {
-      res.status(400).json({
+        return res.status(400).json({
         status: "error",
         message: "Invalid vehicle ID",
       });
@@ -89,7 +89,7 @@ export const getVehicleById = async(req,res)=>{
 
     return res.status(200).json({
         status:"ok",
-        vechile:rows[0]
+        vehicle:rows[0]
     })
 
     } catch (error) {
@@ -134,9 +134,9 @@ export const createVehiles = async(req,res)=>{
         !type.trim()  
     ){
     return res.status(400).json({
-        status:"error",
-        message:"plate number , make , model , year are required"
-    })
+      status: "error",
+      message: "Plate number, make, model, and type are required",
+    });
     }
 
     if(year !== undefined && 
