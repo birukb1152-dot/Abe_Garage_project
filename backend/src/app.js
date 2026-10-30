@@ -6,6 +6,8 @@ import vechileRoutes from './routes/vehicle.routes.js'
 import serviceJobRoutes from './routes/serviceJob.routes.js'
 import errorHandler from './middleware/error.middleware.js'
 import notFoundHandler from './middleware/notFound.middleware.js'
+import authRoutes from "../src/routes/auth.routes.js"
+import authenticate from './middleware/auth.middleware.js'
 
 const app = express();
 
@@ -15,6 +17,7 @@ app.use(express.json());
 app.get('/',(req,res)=>{
     res.send("Hello from abe garage");
 });
+
 
 app.get('/api/health',async(req,res)=>{
     try {
@@ -43,6 +46,7 @@ app.get('/api/health',async(req,res)=>{
     }
 })
 
+app.use("/api/auth",authRoutes);
 app.use("/api/customers",customerRoutes);
 app.use("/api/vehicles",vechileRoutes);
 app.use("/api/service-jobs",serviceJobRoutes);
