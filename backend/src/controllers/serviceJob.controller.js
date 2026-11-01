@@ -4,7 +4,7 @@ import pool from "../config/db.js";
 
 export const getServiceJobs = async (req, res) => {
   try {
-    const { status, vehicle_id, search , page = "1", limit = "10" } = req.query;
+    const { status, vehicle_id, search, page = "1", limit = "10" } = req.query;
 
     // Validate pagination parameters
     const pageNumber = Number(page);
@@ -56,10 +56,11 @@ export const getServiceJobs = async (req, res) => {
     if (vehicle_id !== undefined) {
       vehicleId = Number(vehicle_id);
 
-      if (typeof vehicle_id !== "string"||
+      if (
+        typeof vehicle_id !== "string" ||
         vehicle_id.trim() === "" ||
-        !/^[1-9]\d*$/.test(vehicle_id)||
-        !Number.isSafeInteger(vehicleId) 
+        !/^[1-9]\d*$/.test(vehicle_id) ||
+        !Number.isSafeInteger(vehicleId)
       ) {
         return res.status(400).json({
           status: "error",
@@ -72,6 +73,12 @@ export const getServiceJobs = async (req, res) => {
     const conditions = [];
     const params = [];
 
+    // Mechanics can only view jobs assigned to them
+    if (req.user.role === "mechanic") {
+      conditions.push("sj.assigned_mechanic_id = ?");
+      params.push(req.user.id);
+    }
+
     if (status !== undefined) {
       conditions.push("sj.status = ?");
       params.push(status);
@@ -82,8 +89,8 @@ export const getServiceJobs = async (req, res) => {
       params.push(vehicleId);
     }
 
-    if(search !== undefined){
-      if(typeof search !== "string" || search.trim() === ""){
+    if (search !== undefined) {
+      if (typeof search !== "string" || search.trim() === "") {
         return res.status(400).json({
           status: "error",
           message: "Search term must be a non-empty string",
@@ -98,7 +105,7 @@ export const getServiceJobs = async (req, res) => {
         OR c.last_name LIKE ?
         )`);
 
-        params.push(searchTerm , searchTerm , searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm);
     }
 
     let whereClause = "";
@@ -133,6 +140,7 @@ export const getServiceJobs = async (req, res) => {
         sj.start_date,
         sj.completion_date,
         sj.created_at,
+        sj.assigned_mechanic_id,
         v.plate_number,
         v.make,
         v.model,
@@ -197,6 +205,7 @@ export const getServiceJob = async(req,res)=>{
         sj.start_date,
         sj.completion_date,
         sj.created_at,
+        sj.assigned_mechanic_id,
         v.plate_number,
         v.make,
         v.model,
@@ -208,9 +217,16 @@ export const getServiceJob = async(req,res)=>{
         FROM service_jobs sj
         INNER JOIN vehicles v ON sj.vehicle_id = v.id
         INNER JOIN customers c ON v.customer_id = c.id
-        WHERE sj.id = ?`;
+        WHERE sj.id = ?
+        ${req.user.role === "mechanic" ? "AND sj.assigned_mechanic_id = ?" : ""}`;
         
-        const [rows] = await pool.execute(sql,[id]);
+        const params = [id];
+
+        if (req.user.role === "mechanic") {
+          params.push(req.user.id);
+        }
+
+        const [rows] = await pool.execute(sql,params);
 
         if(rows.length === 0){
             return res.status(404).json({
@@ -234,188 +250,20 @@ export const getServiceJob = async(req,res)=>{
 }
 
 //create (post) service jobs
-export const createServiceJob = async(req,res)=>{
-    try {
-        const {
-            vehicle_id,
-            job_description,
-            status,
-            start_date
-        } = req.body;
 
-        const vehicleId = Number(vehicle_id);
-
-        if (
-          (typeof vehicle_id !== "string" && typeof vehicle_id !== "number") ||
-          (typeof vehicle_id === "string" && !/^[1-9]\d*$/.test(vehicle_id)) ||
-          !Number.isSafeInteger(vehicleId) ||
-          vehicleId <= 0
-        ) {
-          return res.status(400).json({
-            status: "error",
-            message: "Valid vehicle ID required",
-          });
-        }
-
-        if(typeof job_description != "string" ||
-             job_description.trim() === ""
-        ){
-            return res.status(400).json({
-                status:"error",
-                message:"Job description requied"
-            })
-        }
-
-        if (job_description.trim().length > 5000) {
-          return res.status(400).json({
-            status: "error",
-            message: "Job description cannot exceed 5000 characters",
-          });
-        }
-
-        if (start_date !== undefined && start_date !== null) {
-          if (
-            typeof start_date !== "string" ||
-            !/^\d{4}-\d{2}-\d{2}$/.test(start_date)
-          ) {
-            return res.status(400).json({
-              status: "error",
-              message: "Start date must use YYYY-MM-DD format",
-            });
-          }
-
-          const date = new Date(`${start_date}T00:00:00Z`);
-
-          if (
-            Number.isNaN(date.getTime()) ||
-            date.toISOString().slice(0, 10) !== start_date
-          ) {
-            return res.status(400).json({
-              status: "error",
-              message: "Invalid start date",
-            });
-          }
-        }
-
-        const allowedStatuses = [
-            "pending",
-            "in_progress",
-            "completed",
-            "cancelled"
-        ];
-
-        const jobStatus = status ?? "pending"
-
-        if(!allowedStatuses.includes(jobStatus)){
-            return res.status(400).json({
-                status:"error",
-                message:"Invalid job status"
-            })
-        }
-
-        const [vehicles] = await pool.execute(`
-            SELECT id FROM vehicles WHERE id = ?`,
-            [vehicleId]);
-
-        if(vehicles.length === 0){
-            return res.status(404).json({
-                status:"error",
-                message:"Vehicle not found"
-            })
-        }
-
-        const sql = `
-        INSERT INTO service_jobs(vehicle_id, job_description, status ,start_date)
-        VALUE (? , ? , ? , ?)
-        `;
-
-        const [result] = await pool.execute(
-            sql,
-            [
-                vehicleId,
-                job_description.trim(),
-                jobStatus,
-                start_date ?? null
-            ]
-        );
-
-        const [createdJobs] = await pool.execute(
-          `SELECT
-          sj.id,
-          sj.vehicle_id,
-          sj.job_description,
-          sj.status,
-          sj.start_date,
-          sj.completion_date,
-          sj.created_at,
-          v.plate_number,
-          v.make,
-          v.model,
-          c.id AS customer_id,
-          c.first_name AS customer_first_name,
-          c.last_name AS customer_last_name,
-          c.phone AS customer_phone
-          FROM service_jobs sj
-          INNER JOIN vehicles v ON sj.vehicle_id = v.id
-          INNER JOIN customers c ON v.customer_id = c.id
-          WHERE sj.id = ?`,
-          [result.insertId],
-        );
-
-        return res.status(201).json({
-          status: "ok",
-          message: "Service job created successfully",
-          serviceJob: createdJobs[0],
-        });
-
-    } catch (error) {
-        console.error("Failed to create service job",error);
-
-        return res.status(500).json({
-          status: "error",
-          message: "Failed to create service job"
-        });
-    }
-}
-
-//update (put) service job
-export const updateServiceJob = async (req, res) => {
+export const createServiceJob = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { vehicle_id, job_description, status, start_date } = req.body;
+    const {
+      vehicle_id,
+      job_description,
+      status,
+      start_date,
+      assigned_mechanic_id,
+    } = req.body;
 
-    // Validate service job ID
-    const jobId = Number(id);
-
-    if (
-      typeof id !== "string" ||
-      id.trim() === "" ||
-      !/^[1-9]\d*$/.test(id) ||
-      !Number.isSafeInteger(jobId)
-    ) {
-      return res.status(400).json({
-        status: "error",
-        message: "Valid service job ID required",
-      });
-    }
-
-    // Require all update fields
-    if (
-      vehicle_id === undefined ||
-      job_description === undefined ||
-      status === undefined ||
-      start_date === undefined
-    ) {
-      return res.status(400).json({
-        status: "error",
-        message:
-          "vehicle_id, job_description, status, and start_date are required",
-      });
-    }
-
-    // Validate vehicle ID
     const vehicleId = Number(vehicle_id);
 
+    // Validate vehicle ID
     if (
       (typeof vehicle_id !== "string" && typeof vehicle_id !== "number") ||
       (typeof vehicle_id === "string" && !/^[1-9]\d*$/.test(vehicle_id)) ||
@@ -443,30 +291,15 @@ export const updateServiceJob = async (req, res) => {
       });
     }
 
-    // Validate status
-    const allowedStatuses = [
-      "pending",
-      "in_progress",
-      "completed",
-      "cancelled",
-    ];
-
-    if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid job status",
-      });
-    }
-
     // Validate start date
-    if (start_date !== null) {
+    if (start_date !== undefined && start_date !== null) {
       if (
         typeof start_date !== "string" ||
         !/^\d{4}-\d{2}-\d{2}$/.test(start_date)
       ) {
         return res.status(400).json({
           status: "error",
-          message: "Start date must use YYYY-MM-DD format or be null",
+          message: "Start date must use YYYY-MM-DD format",
         });
       }
 
@@ -483,20 +316,57 @@ export const updateServiceJob = async (req, res) => {
       }
     }
 
-    // Check whether the service job exists
-    const [jobs] = await pool.execute(
-      "SELECT id FROM service_jobs WHERE id = ?",
-      [jobId],
-    );
+    // Validate status
+    const allowedStatuses = [
+      "pending",
+      "in_progress",
+      "completed",
+      "cancelled",
+    ];
 
-    if (jobs.length === 0) {
-      return res.status(404).json({
+    const jobStatus = status ?? "pending";
+
+    if (!allowedStatuses.includes(jobStatus)) {
+      return res.status(400).json({
         status: "error",
-        message: "Service job not found",
+        message: "Invalid job status",
       });
     }
 
-    // Check whether the vehicle exists
+    // Only admins can assign mechanics
+    if (assigned_mechanic_id !== undefined && req.user.role !== "admin") {
+      return res.status(403).json({
+        status: "error",
+        message: "Only admins can assign mechanics",
+      });
+    }
+
+    // Validate assigned mechanic ID
+    let mechanicId = null;
+
+    if (
+      req.user.role === "admin" &&
+      assigned_mechanic_id !== undefined &&
+      assigned_mechanic_id !== null
+    ) {
+      mechanicId = Number(assigned_mechanic_id);
+
+      if (
+        (typeof assigned_mechanic_id !== "string" &&
+          typeof assigned_mechanic_id !== "number") ||
+        (typeof assigned_mechanic_id === "string" &&
+          !/^[1-9]\d*$/.test(assigned_mechanic_id)) ||
+        !Number.isSafeInteger(mechanicId) ||
+        mechanicId <= 0
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Valid mechanic ID required",
+        });
+      }
+    }
+
+    // Check whether vehicle exists
     const [vehicles] = await pool.execute(
       "SELECT id FROM vehicles WHERE id = ?",
       [vehicleId],
@@ -509,51 +379,375 @@ export const updateServiceJob = async (req, res) => {
       });
     }
 
-    // Update the service job and manage completion date
-    const sql = `
-            UPDATE service_jobs
-            SET completion_date = CASE
-                    WHEN ? <> 'completed' THEN NULL
-                    WHEN status <> 'completed' THEN CURDATE()
-                    ELSE COALESCE(completion_date, CURDATE())
-                END,
-                vehicle_id = ?,
-                job_description = ?,
-                status = ?,
-                start_date = ?
-            WHERE id = ?
-        `;
+    // Check whether assigned user is an active mechanic
+    if (mechanicId !== null) {
+      const [mechanics] = await pool.execute(
+        `SELECT id FROM users
+         WHERE id = ?
+         AND role = 'mechanic'
+         AND is_active = TRUE`,
+        [mechanicId],
+      );
 
-    await pool.execute(sql, [
-      status,
+      if (mechanics.length === 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "Assigned user must be an active mechanic",
+        });
+      }
+    }
+
+    // Create service job
+    const sql = `
+      INSERT INTO service_jobs (
+        vehicle_id,
+        job_description,
+        status,
+        start_date,
+        assigned_mechanic_id
+      )
+      VALUES (?, ?, ?, ?, ?)
+    `;
+
+    const [result] = await pool.execute(sql, [
       vehicleId,
       job_description.trim(),
-      status,
-      start_date,
-      jobId,
+      jobStatus,
+      start_date ?? null,
+      mechanicId,
     ]);
 
-    // Fetch the updated service job with vehicle and customer details
+    // Fetch created service job
+    const [createdJobs] = await pool.execute(
+      `SELECT
+        sj.id,
+        sj.vehicle_id,
+        sj.job_description,
+        sj.status,
+        sj.start_date,
+        sj.completion_date,
+        sj.created_at,
+        sj.assigned_mechanic_id,
+        v.plate_number,
+        v.make,
+        v.model,
+        c.id AS customer_id,
+        c.first_name AS customer_first_name,
+        c.last_name AS customer_last_name,
+        c.phone AS customer_phone
+       FROM service_jobs sj
+       INNER JOIN vehicles v ON sj.vehicle_id = v.id
+       INNER JOIN customers c ON v.customer_id = c.id
+       WHERE sj.id = ?`,
+      [result.insertId],
+    );
+
+    return res.status(201).json({
+      status: "ok",
+      message: "Service job created successfully",
+      serviceJob: createdJobs[0],
+    });
+  } catch (error) {
+    console.error("Failed to create service job", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to create service job",
+    });
+  }
+};
+
+
+//update (put) service job
+
+
+export const updateServiceJob = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      vehicle_id,
+      job_description,
+      status,
+      start_date,
+      assigned_mechanic_id,
+    } = req.body;
+
+    // Validate service job ID
+    const jobId = Number(id);
+
+    if (
+      typeof id !== "string" ||
+      id.trim() === "" ||
+      !/^[1-9]\d*$/.test(id) ||
+      !Number.isSafeInteger(jobId)
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Valid service job ID required",
+      });
+    }
+
+    // Mechanics can only update status
+    if (
+      req.user.role === "mechanic" &&
+      (vehicle_id !== undefined ||
+        job_description !== undefined ||
+        start_date !== undefined ||
+        assigned_mechanic_id !== undefined)
+    ) {
+      return res.status(403).json({
+        status: "error",
+        message: "Mechanics can only update service job status",
+      });
+    }
+
+    // Status is required
+    if (status === undefined) {
+      return res.status(400).json({
+        status: "error",
+        message: "Status is required",
+      });
+    }
+
+    // Admin must provide the required job details
+    if (req.user.role !== "mechanic") {
+      if (
+        vehicle_id === undefined ||
+        job_description === undefined ||
+        start_date === undefined
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "vehicle_id, job_description, status, and start_date are required",
+        });
+      }
+    }
+
+    // Validate status
+    const allowedStatuses = [
+      "pending",
+      "in_progress",
+      "completed",
+      "cancelled",
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid job status",
+      });
+    }
+
+    let vehicleId;
+    let mechanicId;
+
+    if (req.user.role !== "mechanic") {
+      // Validate vehicle ID
+      vehicleId = Number(vehicle_id);
+
+      if (
+        (typeof vehicle_id !== "string" && typeof vehicle_id !== "number") ||
+        (typeof vehicle_id === "string" && !/^[1-9]\d*$/.test(vehicle_id)) ||
+        !Number.isSafeInteger(vehicleId) ||
+        vehicleId <= 0
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Valid vehicle ID required",
+        });
+      }
+
+      // Validate job description
+      if (
+        typeof job_description !== "string" ||
+        job_description.trim() === ""
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Job description required",
+        });
+      }
+
+      if (job_description.trim().length > 5000) {
+        return res.status(400).json({
+          status: "error",
+          message: "Job description cannot exceed 5000 characters",
+        });
+      }
+
+      // Validate start date
+      if (start_date !== null) {
+        if (
+          typeof start_date !== "string" ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(start_date)
+        ) {
+          return res.status(400).json({
+            status: "error",
+            message: "Start date must use YYYY-MM-DD format or be null",
+          });
+        }
+
+        const date = new Date(`${start_date}T00:00:00Z`);
+
+        if (
+          Number.isNaN(date.getTime()) ||
+          date.toISOString().slice(0, 10) !== start_date
+        ) {
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid start date",
+          });
+        }
+      }
+
+      // Check whether vehicle exists
+      const [vehicles] = await pool.execute(
+        "SELECT id FROM vehicles WHERE id = ?",
+        [vehicleId],
+      );
+
+      if (vehicles.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "Vehicle not found",
+        });
+      }
+
+      // Validate mechanic assignment if supplied
+      if (assigned_mechanic_id !== undefined) {
+        mechanicId = null;
+
+        if (assigned_mechanic_id !== null) {
+          mechanicId = Number(assigned_mechanic_id);
+
+          if (
+            (typeof assigned_mechanic_id !== "string" &&
+              typeof assigned_mechanic_id !== "number") ||
+            (typeof assigned_mechanic_id === "string" &&
+              !/^[1-9]\d*$/.test(assigned_mechanic_id)) ||
+            !Number.isSafeInteger(mechanicId) ||
+            mechanicId <= 0
+          ) {
+            return res.status(400).json({
+              status: "error",
+              message: "Valid mechanic ID required",
+            });
+          }
+
+          const [mechanics] = await pool.execute(
+            `SELECT id FROM users
+             WHERE id = ?
+             AND role = 'mechanic'
+             AND is_active = TRUE`,
+            [mechanicId],
+          );
+
+          if (mechanics.length === 0) {
+            return res.status(400).json({
+              status: "error",
+              message: "Assigned user must be an active mechanic",
+            });
+          }
+        }
+      }
+    }
+
+    // Check whether service job exists
+    const [jobs] = await pool.execute(
+      "SELECT id, status, assigned_mechanic_id FROM service_jobs WHERE id = ?",
+      [jobId],
+    );
+
+    if (jobs.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Service job not found",
+      });
+    }
+
+    // Mechanics can only update their assigned jobs
+    if (
+      req.user.role === "mechanic" &&
+      Number(jobs[0].assigned_mechanic_id) !== Number(req.user.id)
+    ) {
+      return res.status(404).json({
+        status: "error",
+        message: "Service job not found",
+      });
+    }
+
+    // Update service job according to role
+    if (req.user.role === "mechanic") {
+      await pool.execute(
+        `UPDATE service_jobs
+         SET completion_date = CASE
+           WHEN ? <> 'completed' THEN NULL
+           WHEN status <> 'completed' THEN CURDATE()
+           ELSE COALESCE(completion_date, CURDATE())
+         END,
+         status = ?
+         WHERE id = ?`,
+        [status, status, jobId],
+      );
+    } else {
+      // Build admin update query
+      let sql = `
+        UPDATE service_jobs
+        SET completion_date = CASE
+          WHEN ? <> 'completed' THEN NULL
+          WHEN status <> 'completed' THEN CURDATE()
+          ELSE COALESCE(completion_date, CURDATE())
+        END,
+        vehicle_id = ?,
+        job_description = ?,
+        status = ?,
+        start_date = ?
+      `;
+
+      const params = [
+        status,
+        vehicleId,
+        job_description.trim(),
+        status,
+        start_date,
+      ];
+
+      // Change assignment only when the field is supplied
+      if (assigned_mechanic_id !== undefined) {
+        sql += ", assigned_mechanic_id = ?";
+        params.push(mechanicId);
+      }
+
+      sql += " WHERE id = ?";
+      params.push(jobId);
+
+      await pool.execute(sql, params);
+    }
+
+    // Fetch updated service job
     const [updatedJobs] = await pool.execute(
       `SELECT
-      sj.id,
-      sj.vehicle_id,
-      sj.job_description,
-      sj.status,
-      sj.start_date,
-      sj.completion_date,
-      sj.created_at,
-      v.plate_number,
-      v.make,
-      v.model,
-      c.id AS customer_id,
-      c.first_name AS customer_first_name,
-      c.last_name AS customer_last_name,
-      c.phone AS customer_phone
-      FROM service_jobs sj
-      INNER JOIN vehicles v ON sj.vehicle_id = v.id
-      INNER JOIN customers c ON v.customer_id = c.id
-      WHERE sj.id = ?`,
+        sj.id,
+        sj.vehicle_id,
+        sj.job_description,
+        sj.status,
+        sj.start_date,
+        sj.completion_date,
+        sj.created_at,
+        sj.assigned_mechanic_id,
+        v.plate_number,
+        v.make,
+        v.model,
+        c.id AS customer_id,
+        c.first_name AS customer_first_name,
+        c.last_name AS customer_last_name,
+        c.phone AS customer_phone
+       FROM service_jobs sj
+       INNER JOIN vehicles v ON sj.vehicle_id = v.id
+       INNER JOIN customers c ON v.customer_id = c.id
+       WHERE sj.id = ?`,
       [jobId],
     );
 
@@ -571,6 +765,8 @@ export const updateServiceJob = async (req, res) => {
     });
   }
 };
+
+
 
 //delete service job
 export const deleteServiceJob = async(req,res)=>{

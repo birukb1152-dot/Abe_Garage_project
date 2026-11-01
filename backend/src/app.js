@@ -8,6 +8,7 @@ import errorHandler from './middleware/error.middleware.js'
 import notFoundHandler from './middleware/notFound.middleware.js'
 import authRoutes from "../src/routes/auth.routes.js"
 import authenticate from './middleware/auth.middleware.js'
+import authorizeRoles from "./middleware/role.middleware.js";
 
 const app = express();
 
