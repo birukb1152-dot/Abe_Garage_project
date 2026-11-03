@@ -7,8 +7,7 @@ import serviceJobRoutes from './routes/serviceJob.routes.js'
 import errorHandler from './middleware/error.middleware.js'
 import notFoundHandler from './middleware/notFound.middleware.js'
 import authRoutes from "../src/routes/auth.routes.js"
-import authenticate from './middleware/auth.middleware.js'
-import authorizeRoles from "./middleware/role.middleware.js";
+import userRoutes from "../src/routes/user.routes.js"
 
 const app = express();
 
@@ -51,6 +50,7 @@ app.use("/api/auth",authRoutes);
 app.use("/api/customers",customerRoutes);
 app.use("/api/vehicles",vechileRoutes);
 app.use("/api/service-jobs",serviceJobRoutes);
+app.use("/api/users",userRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
