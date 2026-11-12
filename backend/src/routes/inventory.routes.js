@@ -6,6 +6,7 @@ import {
   createInventory,
   updateInventory,
   updateInventoryStock,
+  getStockMovements,
   deleteInventory,
 } from "../controllers/inventory.controller.js";
 
@@ -19,6 +20,8 @@ router.use(authenticate, authorizeRoles("admin", "receptionist"));
 router.get("/", getInventory);
 
 router.get("/:id", getInventoryById);
+
+router.get("/:id/movements", getStockMovements);
 
 router.post("/", createInventory);
 

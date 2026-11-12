@@ -41,8 +41,7 @@ export const getInventory = async (req, res) => {
 export const getInventoryById = async (req, res) => {
   const id = Number(req.params.id);
 
-  if (!/^[1-9]\d*$/.test(req.params.id) ||
-      !Number.isSafeInteger(id)) {
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
     return res.status(400).json({
       status: "error",
       message: "Invalid inventory ID",
@@ -114,10 +113,7 @@ export const createInventory = async (req, res) => {
     });
   }
 
-  if (
-    part_name.trim().length > 150 ||
-    part_number.trim().length > 100
-  ) {
+  if (part_name.trim().length > 150 || part_number.trim().length > 100) {
     return res.status(400).json({
       status: "error",
       message: "Part name or part number exceeds the maximum length",
@@ -145,7 +141,8 @@ export const createInventory = async (req, res) => {
   ) {
     return res.status(400).json({
       status: "error",
-      message: "Unit price must be a non-negative number with up to 2 decimal places",
+      message:
+        "Unit price must be a non-negative number with up to 2 decimal places",
     });
   }
 
@@ -166,7 +163,7 @@ export const createInventory = async (req, res) => {
     if (supplier_id !== undefined && supplier_id !== null) {
       const [suppliers] = await pool.execute(
         "SELECT id FROM suppliers WHERE id = ?",
-        [supplier_id]
+        [supplier_id],
       );
 
       if (suppliers.length === 0) {
@@ -237,8 +234,7 @@ export const updateInventory = async (req, res) => {
     supplier_id,
   } = req.body;
 
-  if (!/^[1-9]\d*$/.test(req.params.id) ||
-      !Number.isSafeInteger(id)) {
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
     return res.status(400).json({
       status: "error",
       message: "Invalid inventory ID",
@@ -308,7 +304,7 @@ export const updateInventory = async (req, res) => {
     if (supplier_id !== undefined && supplier_id !== null) {
       const [suppliers] = await pool.execute(
         "SELECT id FROM suppliers WHERE id = ?",
-        [supplier_id]
+        [supplier_id],
       );
 
       if (suppliers.length === 0) {
@@ -345,7 +341,7 @@ export const updateInventory = async (req, res) => {
     if (result.affectedRows === 0) {
       const [rows] = await pool.execute(
         "SELECT id FROM inventory WHERE id = ?",
-        [id]
+        [id],
       );
 
       if (rows.length === 0) {
@@ -376,14 +372,13 @@ export const updateInventory = async (req, res) => {
     });
   }
 };
- 
+
 // Update inventory stock
 export const updateInventoryStock = async (req, res) => {
   const id = Number(req.params.id);
-  const { quantity } = req.body;
+  const { quantity, reason } = req.body;
 
-  if (!/^[1-9]\d*$/.test(req.params.id) ||
-      !Number.isSafeInteger(id)) {
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
     return res.status(400).json({
       status: "error",
       message: "Invalid inventory ID",
@@ -397,42 +392,148 @@ export const updateInventoryStock = async (req, res) => {
     });
   }
 
+  if (
+    reason !== undefined &&
+    reason !== null &&
+    (typeof reason !== "string" || reason.length > 255)
+  ) {
+    return res.status(400).json({
+      status: "error",
+      message:
+        "Reason must be a string with a maximum length of 255 characters",
+    });
+  }
+
+  let connection;
+
   try {
-    const [result] = await pool.execute(
-      "UPDATE inventory SET quantity = ? WHERE id = ?",
-      [quantity, id]
+    connection = await pool.getConnection();
+
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      "SELECT id, part_name, part_number, quantity FROM inventory WHERE id = ? FOR UPDATE",
+      [id],
     );
 
-    if (result.affectedRows === 0) {
-      const [rows] = await pool.execute(
-        "SELECT id FROM inventory WHERE id = ?",
-        [id]
-      );
+    if (rows.length === 0) {
+      await connection.rollback();
 
-      if (rows.length === 0) {
-        return res.status(404).json({
-          status: "error",
-          message: "Inventory item not found",
-        });
-      }
+      return res.status(404).json({
+        status: "error",
+        message: "Inventory item not found",
+      });
     }
 
-    const [rows] = await pool.execute(
-      "SELECT id, part_name, part_number, quantity FROM inventory WHERE id = ?",
-      [id]
-    );
+    const previousQuantity = rows[0].quantity;
 
-    res.status(200).json({
+    if (previousQuantity !== quantity) {
+      await connection.execute(
+        "UPDATE inventory SET quantity = ? WHERE id = ?",
+        [quantity, id],
+      );
+
+      await connection.execute(
+        `INSERT INTO stock_movements
+  (inventory_id, movement_type, quantity,
+   previous_quantity, new_quantity, reason, performed_by)
+        VALUES (?, 'adjustment', ?, ?, ?, ?, ?)`,
+        [
+          id,
+          Math.abs(quantity - previousQuantity),
+          previousQuantity,
+          quantity,
+          reason?.trim() || null,
+          req.user.id,
+        ],
+      );
+    }
+
+    await connection.commit();
+
+    return res.status(200).json({
       status: "ok",
       message: "Inventory stock updated successfully",
-      inventory: rows[0],
+      inventory: {
+        id,
+        part_name: rows[0].part_name,
+        part_number: rows[0].part_number,
+        quantity,
+      },
     });
   } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+
     console.error("Failed to update inventory stock:", error.message);
 
     res.status(500).json({
       status: "error",
       message: "Failed to update inventory stock",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+};
+
+// Get stock movements for an inventory item
+export const getStockMovements = async (req, res) => {
+  const id = Number(req.params.id);
+
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
+    return res.status(400).json({
+      status: "error",
+      message: "Invalid inventory ID",
+    });
+  }
+
+  try {
+    const [items] = await pool.execute(
+      "SELECT id FROM inventory WHERE id = ?",
+      [id],
+    );
+
+    if (items.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Inventory item not found",
+      });
+    }
+
+    const [movements] = await pool.execute(
+      `SELECT
+        sm.id,
+        sm.inventory_id,
+        sm.movement_type,
+        sm.quantity,
+        sm.previous_quantity,
+        sm.new_quantity,
+        sm.reason,
+        sm.performed_by,
+        u.first_name,
+        u.last_name,
+        sm.created_at
+      FROM stock_movements sm
+      LEFT JOIN users u ON sm.performed_by = u.id
+      WHERE sm.inventory_id = ?
+      ORDER BY sm.created_at DESC, sm.id DESC`,
+      [id],
+    );
+
+    return res.status(200).json({
+      status: "ok",
+      count: movements.length,
+      movements,
+    });
+  } catch (error) {
+    console.error("Failed to retrieve stock movements:", error.message);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to retrieve stock movements",
     });
   }
 };
@@ -441,8 +542,7 @@ export const updateInventoryStock = async (req, res) => {
 export const deleteInventory = async (req, res) => {
   const id = Number(req.params.id);
 
-  if (!/^[1-9]\d*$/.test(req.params.id) ||
-      !Number.isSafeInteger(id)) {
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
     return res.status(400).json({
       status: "error",
       message: "Invalid inventory ID",
@@ -450,10 +550,9 @@ export const deleteInventory = async (req, res) => {
   }
 
   try {
-    const [result] = await pool.execute(
-      "DELETE FROM inventory WHERE id = ?",
-      [id]
-    );
+    const [result] = await pool.execute("DELETE FROM inventory WHERE id = ?", [
+      id,
+    ]);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({
