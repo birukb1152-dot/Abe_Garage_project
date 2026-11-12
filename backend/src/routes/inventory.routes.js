@@ -7,6 +7,8 @@ import {
   updateInventory,
   updateInventoryStock,
   getStockMovements,
+  stockIn,
+  stockOut,
   deleteInventory,
 } from "../controllers/inventory.controller.js";
 
@@ -26,6 +28,10 @@ router.get("/:id/movements", getStockMovements);
 router.post("/", createInventory);
 
 router.put("/:id", updateInventory);
+
+router.post("/:id/stock-in", stockIn);
+
+router.post("/:id/stock-out", stockOut);
 
 router.patch("/:id/stock", updateInventoryStock);
 

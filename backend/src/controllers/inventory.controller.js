@@ -479,6 +479,239 @@ export const updateInventoryStock = async (req, res) => {
   }
 };
 
+// Handle stock in for an inventory item
+export const stockIn = async (req, res) => {
+  const id = Number(req.params.id);
+  const { quantity, reason } = req.body;
+
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
+    return res.status(400).json({
+      status: "error",
+      message: "Invalid inventory ID",
+    });
+  }
+
+  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+    return res.status(400).json({
+      status: "error",
+      message: "Quantity must be a positive integer",
+    });
+  }
+
+  if (
+    reason !== undefined &&
+    reason !== null &&
+    (typeof reason !== "string" || reason.length > 255)
+  ) {
+    return res.status(400).json({
+      status: "error",
+      message:
+        "Reason must be a string with a maximum length of 255 characters",
+    });
+  }
+
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      "SELECT id, part_name, part_number, quantity FROM inventory WHERE id = ? FOR UPDATE",
+      [id],
+    );
+
+    if (rows.length === 0) {
+      await connection.rollback();
+
+      return res.status(404).json({
+        status: "error",
+        message: "Inventory item not found",
+      });
+    }
+
+    const previousQuantity = rows[0].quantity;
+    const newQuantity = previousQuantity + quantity;
+
+    if (!Number.isSafeInteger(newQuantity) || newQuantity > 2147483647) {
+      await connection.rollback();
+
+      return res.status(400).json({
+        status: "error",
+        message: "Resulting stock quantity exceeds the allowed limit",
+      });
+    }
+
+    await connection.execute("UPDATE inventory SET quantity = ? WHERE id = ?", [
+      newQuantity,
+      id,
+    ]);
+
+    await connection.execute(
+      `INSERT INTO stock_movements
+      (inventory_id, movement_type, quantity,
+       previous_quantity, new_quantity, reason, performed_by)
+      VALUES (?, 'stock_in', ?, ?, ?, ?, ?)`,
+      [
+        id,
+        quantity,
+        previousQuantity,
+        newQuantity,
+        reason?.trim() || null,
+        req.user.id,
+      ],
+    );
+
+    await connection.commit();
+
+    return res.status(200).json({
+      status: "ok",
+      message: "Stock received successfully",
+      inventory: {
+        id,
+        part_name: rows[0].part_name,
+        part_number: rows[0].part_number,
+        previous_quantity: previousQuantity,
+        quantity_added: quantity,
+        new_quantity: newQuantity,
+      },
+    });
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+
+    console.error("Failed to receive stock:", error.message);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to receive stock",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+};
+
+// Handle stock out for an inventory item
+export const stockOut = async (req, res) => {
+  const id = Number(req.params.id);
+  const { quantity, reason } = req.body;
+
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
+    return res.status(400).json({
+      status: "error",
+      message: "Invalid inventory ID",
+    });
+  }
+
+  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+    return res.status(400).json({
+      status: "error",
+      message: "Quantity must be a positive integer",
+    });
+  }
+
+  if (
+    reason !== undefined &&
+    reason !== null &&
+    (typeof reason !== "string" || reason.length > 255)
+  ) {
+    return res.status(400).json({
+      status: "error",
+      message:
+        "Reason must be a string with a maximum length of 255 characters",
+    });
+  }
+
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      "SELECT id, part_name, part_number, quantity FROM inventory WHERE id = ? FOR UPDATE",
+      [id],
+    );
+
+    if (rows.length === 0) {
+      await connection.rollback();
+
+      return res.status(404).json({
+        status: "error",
+        message: "Inventory item not found",
+      });
+    }
+
+    const previousQuantity = rows[0].quantity;
+
+    if (quantity > previousQuantity) {
+      await connection.rollback();
+
+      return res.status(400).json({
+        status: "error",
+        message: "Insufficient stock available",
+        available_quantity: previousQuantity,
+        requested_quantity: quantity,
+      });
+    }
+
+    const newQuantity = previousQuantity - quantity;
+
+    await connection.execute("UPDATE inventory SET quantity = ? WHERE id = ?", [
+      newQuantity,
+      id,
+    ]);
+
+    await connection.execute(
+      `INSERT INTO stock_movements
+      (inventory_id, movement_type, quantity,
+       previous_quantity, new_quantity, reason, performed_by)
+      VALUES (?, 'stock_out', ?, ?, ?, ?, ?)`,
+      [
+        id,
+        quantity,
+        previousQuantity,
+        newQuantity,
+        reason?.trim() || null,
+        req.user.id,
+      ],
+    );
+
+    await connection.commit();
+
+    return res.status(200).json({
+      status: "ok",
+      message: "Stock issued successfully",
+      inventory: {
+        id,
+        part_name: rows[0].part_name,
+        part_number: rows[0].part_number,
+        previous_quantity: previousQuantity,
+        quantity_removed: quantity,
+        new_quantity: newQuantity,
+      },
+    });
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+
+    console.error("Failed to issue stock:", error.message);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to issue stock",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+};
+
 // Get stock movements for an inventory item
 export const getStockMovements = async (req, res) => {
   const id = Number(req.params.id);
