@@ -10,6 +10,7 @@ import authRoutes from "../src/routes/auth.routes.js"
 import userRoutes from "../src/routes/user.routes.js"
 import inventoryRoutes from "./routes/inventory.routes.js";
 import supplierRoutes from "./routes/supplier.routes.js";
+import serviceJobPartsRoutes from "./routes/serviceJobParts.routes.js";
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.use("/api/service-jobs",serviceJobRoutes);
 app.use("/api/users",userRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/suppliers", supplierRoutes);
+app.use("/api/service-job-parts", serviceJobPartsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
