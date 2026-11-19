@@ -130,6 +130,17 @@ export const createSupplier = async (req, res) => {
       });
     }
 
+    const normalizedEmail = email?.trim() || null;
+
+    if(normalizedEmail &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+    ){
+      return res.status(400).json({
+        status:"error",
+        message:"Please provide a valid email address",
+      });
+    }
+
     if (
       address !== undefined &&
       address !== null &&
@@ -151,7 +162,7 @@ export const createSupplier = async (req, res) => {
       supplier_name.trim(),
       contact_person?.trim() || null,
       phone?.trim() || null,
-      email?.trim() || null,
+      normalizedEmail,
       address?.trim() || null,
     ]);
 
@@ -163,7 +174,7 @@ export const createSupplier = async (req, res) => {
         supplier_name: supplier_name.trim(),
         contact_person: contact_person?.trim() || null,
         phone: phone?.trim() || null,
-        email: email?.trim() || null,
+        email: normalizedEmail,
         address: address?.trim() || null,
       },
     });
@@ -189,7 +200,7 @@ export const updateSupplier = async (req, res) => {
       });
     }
 
-    const { supplier_name, contact_person, phone, email, address } = req.body;
+    const { supplier_name, contact_person, phone, email, address } = req.body ?? {};
 
     if (
       typeof supplier_name !== "string" ||
@@ -235,6 +246,18 @@ export const updateSupplier = async (req, res) => {
       });
     }
 
+    const normalizedEmail = email?.trim() || null;
+
+    if (
+      normalizedEmail &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Please provide a valid email address",
+      });
+    }
+
     if (
       address !== undefined &&
       address !== null &&
@@ -245,6 +268,38 @@ export const updateSupplier = async (req, res) => {
         message: "Address must be a string",
       });
     }
+
+    const [existingRows] = await pool.query(
+      "SELECT * FROM suppliers WHERE id = ?",
+      [id]
+    );
+
+    if(existingRows.length === 0){
+      return res.status(400).json({
+        status:"error",
+        message:"Supplier not found",
+      });
+    }
+
+    const existingSupplier = existingRows[0];
+
+    const updatedContactPerson = 
+    contact_person === undefined
+    ? existingSupplier.contact_person
+    : contact_person?.trim() || null;
+
+    const updatedPhone =
+    phone === undefined
+    ? existingSupplier.phone
+    : phone?.trim() || null;
+
+    const updatedEmail =
+    email === undefined ? existingSupplier.email : normalizedEmail;
+
+    const updatedAddress =
+    address === undefined
+    ? existingSupplier.address
+    : address?.trim() || null;
 
     const sql = `
       UPDATE suppliers
@@ -257,27 +312,14 @@ export const updateSupplier = async (req, res) => {
       WHERE id = ?
     `;
 
-    const [result] = await pool.query(sql, [
+    await pool.query(sql,[
       supplier_name.trim(),
-      contact_person?.trim() || null,
-      phone?.trim() || null,
-      email?.trim() || null,
-      address?.trim() || null,
+      updatedContactPerson,
+      updatedPhone,
+      updatedEmail,
+      updatedAddress,
       id,
     ]);
-
-    if (result.affectedRows === 0) {
-      const [rows] = await pool.query("SELECT id FROM suppliers WHERE id = ?", [
-        id,
-      ]);
-
-      if (rows.length === 0) {
-        return res.status(404).json({
-          status: "error",
-          message: "Supplier not found",
-        });
-      }
-    }
 
     return res.status(200).json({
       status: "success",
@@ -321,6 +363,17 @@ export const deleteSupplier = async (req, res) => {
     });
   } catch (error) {
     console.error("Delete supplier error:", error);
+
+    if (
+      error.code === "ER_ROW_IS_REFERENCED_2" ||
+      error.errno === 1451
+    ) {
+      return res.status(409).json({
+        status: "error",
+        message:
+          "Cannot delete this supplier because inventory items are linked to it.",
+      });
+    }
 
     return res.status(500).json({
       status: "error",
