@@ -223,9 +223,12 @@ export const createInventory = async (req, res) => {
 
 // Update an inventory item
 export const updateInventory = async (req, res) => {
-  const id = Number(req.params.id);
+  let connection ;
+  try{
+    connection = await pool.getConnection();
+    const {id} = req.params;
 
-  const {
+    const {
     part_name,
     part_number,
     description,
@@ -234,130 +237,175 @@ export const updateInventory = async (req, res) => {
     supplier_id,
   } = req.body;
 
-  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(id)) {
+
+  if (!Number.isSafeInteger(Number(id)) || Number(id) <= 0) {
     return res.status(400).json({
       status: "error",
       message: "Invalid inventory ID",
     });
   }
 
-  if (
-    typeof part_name !== "string" ||
-    !part_name.trim() ||
-    part_name.trim().length > 150 ||
-    typeof part_number !== "string" ||
-    !part_number.trim() ||
-    part_number.trim().length > 100
+if (
+    quantity !== undefined
   ) {
     return res.status(400).json({
       status: "error",
-      message: "Valid part name and part number are required",
+      message:
+        "Stock quantity cannot be changed here. Use the stock adjustment endpoint.",
     });
   }
+
+  await connection.beginTransaction();
+
+  const [items] = await connection.execute(
+    `SELECT * FROM inventory WHERE id = ? FOR UPDATE`,
+    [id]
+  );
+
+  if (items.length === 0) {
+      await connection.rollback();
+
+      return res.status(404).json({
+        status: "error",
+        message: "Inventory item not found",
+      });
+    }
+
+const existing = items[0];
+
+const updatedPartName = 
+part_name === undefined ? existing.part_name : part_name;
+
+const updatedPartNumber = 
+part_number === undefined ? existing.part_number : part_number;
+
+const updatedDescription = 
+description === undefined ? existing.description : description;
+
+const updatedUnitPrice =
+unit_price === undefined ? existing.unit_price : unit_price;
+
+const updatedSupplierId =
+supplier_id === undefined ? existing.supplier_id : supplier_id;
+
 
   if (
-    quantity !== undefined &&
-    (!Number.isSafeInteger(quantity) || quantity < 0)
+    typeof updatedPartName !== "string" ||
+    !updatedPartName.trim() 
   ) {
+
+    await connection.rollback();
+
     return res.status(400).json({
       status: "error",
-      message: "Quantity must be a non-negative integer",
+      message: "Part name must be a non-empty string",
     });
   }
 
-  if (
-    unit_price !== undefined &&
-    (typeof unit_price !== "number" ||
-      !Number.isFinite(unit_price) ||
-      unit_price < 0 ||
-      !/^\d{1,8}(\.\d{1,2})?$/.test(String(unit_price)))
-  ) {
-    return res.status(400).json({
-      status: "error",
-      message: "Invalid unit price",
-    });
-  }
+ if (
+      typeof updatedPartNumber !== "string" ||
+      !updatedPartNumber.trim()
+    ) {
+      await connection.rollback();
 
-  if (
-    supplier_id !== undefined &&
-    supplier_id !== null &&
-    (!Number.isSafeInteger(supplier_id) || supplier_id <= 0)
-  ) {
-    return res.status(400).json({
-      status: "error",
-      message: "Invalid supplier ID",
-    });
-  }
+      return res.status(400).json({
+        status: "error",
+        message: "Part number must be a non-empty string",
+      });
+    }
 
-  if (
-    description !== undefined &&
-    description !== null &&
-    typeof description !== "string"
-  ) {
-    return res.status(400).json({
-      status: "error",
-      message: "Description must be a string or null",
-    });
-  }
+if (
+      updatedDescription !== null &&
+      updatedDescription !== undefined &&
+      typeof updatedDescription !== "string"
+    ) {
+      await connection.rollback();
 
-  try {
-    if (supplier_id !== undefined && supplier_id !== null) {
-      const [suppliers] = await pool.execute(
+      return res.status(400).json({
+        status: "error",
+        message: "Description must be a string or null",
+      });
+    }
+
+if (
+      !Number.isFinite(Number(updatedUnitPrice)) ||
+      Number(updatedUnitPrice) < 0
+    ) {
+      await connection.rollback();
+
+      return res.status(400).json({
+        status: "error",
+        message: "Unit price must be a non-negative number",
+      });
+    }
+
+
+    if (
+      updatedSupplierId !== null &&
+      (!Number.isInteger(Number(updatedSupplierId)) ||
+        Number(updatedSupplierId) <= 0)
+    ) {
+      await connection.rollback();
+
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid supplier ID",
+      });
+    }
+
+
+     if (updatedSupplierId !== null) {
+      const [suppliers] = await connection.execute(
         "SELECT id FROM suppliers WHERE id = ?",
-        [supplier_id],
+        [updatedSupplierId]
       );
 
       if (suppliers.length === 0) {
-        return res.status(400).json({
+        await connection.rollback();
+
+        return res.status(404).json({
           status: "error",
           message: "Supplier not found",
         });
       }
     }
 
-    const sql = `
-      UPDATE inventory
-      SET part_name = ?,
-          part_number = ?,
-          description = ?,
-          quantity = ?,
-          unit_price = ?,
-          supplier_id = ?
-      WHERE id = ?
-    `;
 
-    const values = [
-      part_name.trim(),
-      part_number.trim(),
-      description ?? null,
-      quantity ?? 0,
-      unit_price ?? 0,
-      supplier_id ?? null,
-      id,
-    ];
+    await connection.execute(
+      `UPDATE inventory
+       SET part_name = ?,
+           part_number = ?,
+           description = ?,
+           unit_price = ?,
+           supplier_id = ?
+       WHERE id = ?`,
+      [
+        updatedPartName.trim(),
+        updatedPartNumber.trim(),
+        updatedDescription,
+        Number(updatedUnitPrice),
+        updatedSupplierId,
+        id,
+      ]
+    );
 
-    const [result] = await pool.execute(sql, values);
+    await connection.commit();
 
-    if (result.affectedRows === 0) {
-      const [rows] = await pool.execute(
-        "SELECT id FROM inventory WHERE id = ?",
-        [id],
-      );
-
-      if (rows.length === 0) {
-        return res.status(404).json({
-          status: "error",
-          message: "Inventory item not found",
-        });
-      }
-    }
-
-    res.status(200).json({
-      status: "ok",
+    return res.status(200).json({
+      status: "success",
       message: "Inventory item updated successfully",
+      data: {
+        id: Number(id),
+        part_name: updatedPartName.trim(),
+        part_number: updatedPartNumber.trim(),
+        description: updatedDescription,
+        quantity: existing.quantity,
+        unit_price: Number(updatedUnitPrice),
+        supplier_id: updatedSupplierId,
+      },
     });
   } catch (error) {
-    console.error("Failed to update inventory:", error.message);
+    await connection.rollback();
 
     if (error.code === "ER_DUP_ENTRY") {
       return res.status(409).json({
@@ -366,10 +414,16 @@ export const updateInventory = async (req, res) => {
       });
     }
 
-    res.status(500).json({
+    console.error("Update inventory error:", error);
+
+    return res.status(500).json({
       status: "error",
-      message: "Failed to update inventory",
+      message: "Failed to update inventory item",
     });
+  } finally {
+    if(connection){
+      connection.release();
+    }
   }
 };
 
@@ -741,6 +795,7 @@ export const getStockMovements = async (req, res) => {
         sm.id,
         sm.inventory_id,
         sm.movement_type,
+        sm.service_job_id,
         sm.quantity,
         sm.previous_quantity,
         sm.new_quantity,
@@ -801,6 +856,16 @@ export const deleteInventory = async (req, res) => {
     });
   } catch (error) {
     console.error("Failed to delete inventory item:", error.message);
+
+    if(error.code === "ER_ROW_IS_REFERENCED_2" ||
+      error.errno === 1451
+    ){
+return res.status(409).json({
+  status: "error",
+  message:
+    "Cannot delete this inventory item because it is referenced by existing service records or stock movements.",
+});
+    }
 
     res.status(500).json({
       status: "error",
