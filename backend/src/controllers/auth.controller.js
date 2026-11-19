@@ -6,12 +6,22 @@ export const login = async(req, res, next)=>{
     try {
         const {email, password} = req.body;
 
-        if(!email || !password){
+        if(typeof email !== "string" ||
+          typeof password !== "string" ||
+          !email.trim() || 
+          !password){
             return res.status(400).json({
                 status:"error",
                 message:"Email and Password required!",
             });
         };
+
+        if(!process.env.JWT_SECRET){
+            return res.status(500).json({
+                status:"error",
+                message:"Authentication service is not configured",
+            });
+        }
 
             const [users] = await pool.execute(
               `SELECT id, first_name, last_name, email,
@@ -19,7 +29,7 @@ export const login = async(req, res, next)=>{
                  FROM users
                  WHERE email = ?
                  LIMIT 1`,
-              [email.toLowerCase().trim()],
+              [email.trim().toLowerCase()],
             );
 
         if(users.length === 0){
@@ -30,12 +40,30 @@ export const login = async(req, res, next)=>{
         };
         const user = users[0];
 
+        let passwordMatches = false;
+
+        try{
+          passwordMatches = await bcrypt.compare(password, 
+            user.password_hash
+          );
+        } catch (error) {
+          passwordMatches = false;
+        }
+
+        if(!passwordMatches){
+          return res.status(401).json({
+            status:"error",
+            message:"Invalid email or password",
+          });
+        }
+
         if (!user.is_active) {
           return res.status(403).json({
             status: "error",
             message: "Your account is inactive",
           });
         }
+        
         const token = jwt.sign(
           {
             id: user.id,
