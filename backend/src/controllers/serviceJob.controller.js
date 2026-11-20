@@ -404,9 +404,10 @@ export const createServiceJob = async (req, res) => {
         job_description,
         status,
         start_date,
+        completion_date,
         assigned_mechanic_id
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, CASE WHEN ? = 'completed' THEN CURDATE() ELSE NULL END, ?)
     `;
 
     const [result] = await pool.execute(sql, [
@@ -414,6 +415,7 @@ export const createServiceJob = async (req, res) => {
       job_description.trim(),
       jobStatus,
       start_date ?? null,
+      jobStatus,
       mechanicId,
     ]);
 
@@ -803,6 +805,15 @@ export const deleteServiceJob = async(req,res)=>{
 
 
   } catch (error) {
+    if(
+      error.code === "ER_ROW_IS_REFERENCED_2" ||
+      error.errno === 1451
+    ){
+      return res.status(409).json({
+        status:"error",
+        message:"Cannot delete this service job because it has associated parts or stock movements.",
+      })
+    }
     console.error("Failed to delete service job",error);
 
     return res.status(500).json({
