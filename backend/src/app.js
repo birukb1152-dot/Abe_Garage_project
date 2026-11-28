@@ -1,18 +1,19 @@
-import express, { json } from 'express'
-import cors from 'cors'
-import pool from './config/db.js'
-import customerRoutes from './routes/customer.routes.js'
-import vechileRoutes from './routes/vehicle.routes.js'
-import serviceJobRoutes from './routes/serviceJob.routes.js'
-import errorHandler from './middleware/error.middleware.js'
-import notFoundHandler from './middleware/notFound.middleware.js'
-import authRoutes from "../src/routes/auth.routes.js"
-import userRoutes from "../src/routes/user.routes.js"
+import express, { json } from 'express';
+import cors from 'cors';
+import pool from './config/db.js';
+import customerRoutes from './routes/customer.routes.js';
+import vechileRoutes from './routes/vehicle.routes.js';
+import serviceJobRoutes from './routes/serviceJob.routes.js';
+import errorHandler from './middleware/error.middleware.js';
+import notFoundHandler from './middleware/notFound.middleware.js';
+import authRoutes from "../src/routes/auth.routes.js";
+import userRoutes from "../src/routes/user.routes.js";
 import inventoryRoutes from "./routes/inventory.routes.js";
 import supplierRoutes from "./routes/supplier.routes.js";
 import serviceJobPartsRoutes from "./routes/serviceJobParts.routes.js";
 import employeeRoutes from "./routes/employee.routes.js";
 import serviceRoutes from "./routes/service.routes.js";
+import orderRoutes from "./routes/order.routes.js";
 
 const app = express();
 
@@ -61,6 +62,7 @@ app.use("/api/suppliers", supplierRoutes);
 app.use("/api/service-job-parts", serviceJobPartsRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/services", serviceRoutes);
+app.use("/api/orders", orderRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

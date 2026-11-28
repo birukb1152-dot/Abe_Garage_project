@@ -796,6 +796,7 @@ export const getStockMovements = async (req, res) => {
         sm.inventory_id,
         sm.movement_type,
         sm.service_job_id,
+        sm.order_id,
         sm.quantity,
         sm.previous_quantity,
         sm.new_quantity,
